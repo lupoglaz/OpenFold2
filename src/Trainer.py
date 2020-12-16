@@ -33,7 +33,7 @@ class Trainer:
 
 		self.device = 'cpu'
 		if torch.cuda.is_available():
-			self.device = torch.cuda.current_device()
+			# self.device = torch.cuda.current_device()
 			if not (device_ids is None):
 				self.model = torch.nn.DataParallel(self.model, device_ids=device_ids).to(self.device)
 			else:
@@ -56,8 +56,8 @@ class Trainer:
 
 	def step(self, x, y):
 		self.model.train()
-		x = x.to(self.device)
-		y = y.to(self.device)
+		# x = x.to(self.device)
+		# y = y.to(self.device)
 
 
 		logits, loss = self.model(x, y)

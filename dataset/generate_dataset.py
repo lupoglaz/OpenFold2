@@ -5,7 +5,7 @@ import numpy as np
 import _pickle as pkl
 class SimConfig:
 	N=100    # Number of particles
-	tEnd=1.0   # time at which simulation ends
+	tEnd=0.5   # time at which simulation ends
 	dt=0.01   # timestep
 	G=1.0    # Gravitational Constant
 	def __init__(self, **kwargs):
@@ -75,7 +75,7 @@ def visualize(r, v, config):
 	ax.set_ylim(-2,2)
 	ax.set_zlim(-2,2)
 	animation = camera.animate()
-	animation.save('anim.mp4')
+	animation.save('anim.gif')
 
 	fig = plt.figure(figsize=(12,6))
 	plt.plot(KE, label='Kinetic energy')
@@ -90,7 +90,7 @@ if __name__ == '__main__':
 	pos  = np.random.randn(N,3)
 	vel  = np.random.randn(N,3)
 	vel -= np.mean(mass * vel, 0) / np.mean(mass)
-	config = SimConfig()
+	config = SimConfig(tEnd = 10.0)
 
 	r, v = simulate(mass, pos, vel, config)
 	visualize(r, v, config)

@@ -9,10 +9,11 @@ logger = logging.getLogger(__name__)
 import torch
 from torch.utils.data import DataLoader
 
-from src.Model import GPT, GPTConfig
+from src.Model import SE3Transformer, SE3TConfig
 from src.Trainer import Trainer, TrainerConfig
-from src.Dataset import CharDataset
+from src.Dataset import AtomDataset, collate
 
+import _pickle as pkl
 
 def train(model_config, train_config, train_dataset):
 	devices = []
@@ -24,12 +25,13 @@ def train(model_config, train_config, train_dataset):
 			else:
 				print(f'Excluding device: {i}:{torch.cuda.get_device_name(i)}')
 	
-	model = GPT(model_config)
-	trainer = Trainer(model, train_config, device_ids=devices)
+	model = SE3Transformer(model_config)
+	trainer = Trainer(model, train_config, device_ids=None)
 
 	train_stream = DataLoader(  train_dataset, shuffle=True, pin_memory=True, 
 								batch_size=train_config.batch_size, 
-								num_workers=train_config.num_workers)
+								num_workers=train_config.num_workers,
+								collate_fn=collate)
 
 	for epoch in range(train_config.max_epochs):
 		losses = []
@@ -59,14 +61,14 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 
 	block_size = 128
-	text = open('input.txt').read()
-	train_dataset = CharDataset(text, block_size)
+	with open('dataset/data.pkl', 'rb') as fin:
+		data = pkl.load(fin)
+	train_dataset = AtomDataset(data, block_size)
+	
+	model_config = SE3TConfig(	num_layers=1)
 
-	model_config = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
-							n_layer=8, n_head=8, n_embd=512)
-
-	train_config = TrainerConfig(max_epochs=2, batch_size=256, learning_rate=6e-4, 
-							lr_decay=True, warmup_tokens=512*20, 
+	train_config = TrainerConfig(max_epochs=100, batch_size=64, learning_rate=6e-4, 
+							lr_decay=True, warmup_tokens=64*20, 
 							final_tokens=2*len(train_dataset)*block_size, 
 							num_workers=4, ckpt_path = 'checkpoint.th')
 	
