@@ -33,7 +33,8 @@ class Trainer:
 
 		self.device = 'cpu'
 		if torch.cuda.is_available():
-			# self.device = torch.cuda.current_device()
+			self.device = torch.device(torch.cuda.current_device())
+			print(self.device)
 			if not (device_ids is None):
 				self.model = torch.nn.DataParallel(self.model, device_ids=device_ids).to(self.device)
 			else:
@@ -56,8 +57,8 @@ class Trainer:
 
 	def step(self, x, y):
 		self.model.train()
-		# x = x.to(self.device)
-		# y = y.to(self.device)
+		x = x.to(self.device)
+		y = y.to(self.device)
 
 
 		logits, loss = self.model(x, y)
@@ -70,7 +71,7 @@ class Trainer:
 		if self.config.lr_decay:
 			self.tokens += (y>=0).sum()
 			if self.tokens < self.config.warmup_tokens:
-				lr_mult = float(self.tokens)/float(max(1, config.warmup_tokens))
+				lr_mult = float(self.tokens)/float(max(1, self.config.warmup_tokens))
 			else:
 				progress = float(self.tokens - self.config.warmup_tokens)/float(max(1, self.config.final_tokens - self.config.warmup_tokens))
 				lr_mult = max(0.1, 0.5*(1.0 + math.cos(math.pi*progress)))
@@ -81,19 +82,13 @@ class Trainer:
 			lr = self.config.learning_rate
 		
 		return loss.item()
-
-	def sample(self, x, steps, temperature=1.0, sample=False):
+	
+	def test(self, x, y):
 		self.model.eval()
-		block_size = self.model.get_block_size()
-		for k in range(steps):
-			x_cond = x if x.size(1)<=block_size else x[:, -block_size:]
-			logits, _ = self.model(x_cond)
-			logits = logits[:, -1, :] / temperature
-			probs = F.softmax(logits, dim=-1)
-			if sample:
-				ix = torch.multinomial(probs, num_samples=1)
-			else:
-				_, ix = torch.topk(probs, k=1, dim=-1)
-			x = torch.cat([x, ix], dim=1)
+		x = x.to(self.device)
+		y = y.to(self.device)
 
-		return x
+
+		logits, loss = self.model(x, y)
+		return loss.mean()
+	

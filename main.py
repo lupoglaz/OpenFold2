@@ -43,14 +43,21 @@ def train(model_config, train_config, train_dataset):
 
 		trainer.save_checkpoint()
 
-def test(context, model_config, train_config, train_dataset):
-	model = GPT(model_config)
+def test(model_config, train_config, test_dataset):
+	model = SE3Transformer(model_config)
 	trainer = Trainer(model, train_config)
 	trainer.load_checkpoint()
 
-	x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
-	y = trainer.sample(x, 2000, temperature=1.0, sample=True)[0]
-	return ''.join([train_dataset.itos[int(i)] for i in y])
+	test_stream = DataLoader(  test_dataset, shuffle=False, pin_memory=True, 
+								batch_size=train_config.batch_size, 
+								num_workers=train_config.num_workers,
+								collate_fn=collate)
+	losses = []
+	for x,y in tqdm(test_stream):
+		loss = trainer.step(x,y)
+		losses.append(loss)
+		
+	print(f"Test loss = {np.mean(losses)}")
 	
 
 if __name__ == '__main__':
@@ -59,26 +66,36 @@ if __name__ == '__main__':
 	parser.add_argument('-test', action='store_const', const=lambda:'test', dest='cmd')
 		
 	args = parser.parse_args()
-
-	block_size = 128
-	with open('dataset/data.pkl', 'rb') as fin:
-		data = pkl.load(fin)
-	train_dataset = AtomDataset(data, block_size)
 	
-	model_config = SE3TConfig(	num_layers=1)
+	model_config = SE3TConfig()
 
-	train_config = TrainerConfig(max_epochs=100, batch_size=64, learning_rate=6e-4, 
-							lr_decay=True, warmup_tokens=64*20, 
-							final_tokens=2*len(train_dataset)*block_size, 
-							num_workers=4, ckpt_path = 'checkpoint.th')
-	
+		
 	if args.cmd is None:
 		parser.print_help()
 		sys.exit()
+
 	elif args.cmd() == 'test':
-		output = test("Ever more, was there pain!", model_config, train_config, train_dataset)
-		print(output)
+		block_size = 128
+		with open('dataset/data_test.pkl', 'rb') as fin:
+			data = pkl.load(fin)
+		test_dataset = AtomDataset(data, block_size)
+
+		test_config = TrainerConfig(batch_size=32, num_workers=4, ckpt_path = 'checkpoint.th')
+
+		test(model_config, test_config, test_dataset)
+
 	elif args.cmd() == 'train':
+		block_size = 128
+		with open('dataset/data.pkl', 'rb') as fin:
+			data = pkl.load(fin)
+		train_dataset = AtomDataset(data, block_size)
+
+		train_config = TrainerConfig(max_epochs=300, batch_size=32, learning_rate=6e-3, 
+									lr_decay=False, warmup_tokens=64*20, 
+									final_tokens=2*len(train_dataset)*block_size, 
+									num_workers=4, ckpt_path = 'checkpoint.th')
+
 		train(model_config, train_config, train_dataset)
+
 	else:
 		print('wtf')

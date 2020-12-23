@@ -90,11 +90,11 @@ if __name__ == '__main__':
 	pos  = np.random.randn(N,3)
 	vel  = np.random.randn(N,3)
 	vel -= np.mean(mass * vel, 0) / np.mean(mass)
-	config = SimConfig(tEnd = 10.0)
+	config = SimConfig(tEnd = 2.0)
 
 	r, v = simulate(mass, pos, vel, config)
-	visualize(r, v, config)
+	# visualize(r, v, config)
 
-	with open('data.pkl', 'wb') as fout:
+	with open('data_test.pkl', 'wb') as fout:
 		pkl.dump((r,v), fout)
 	

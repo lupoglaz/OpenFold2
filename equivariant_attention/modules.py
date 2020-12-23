@@ -225,7 +225,6 @@ class RadialFunc(nn.Module):
 
     def forward(self, x):
         y = self.net(x)
-        print(x.size(), y.size())
         return y.view(-1, self.out_dim, 1, self.in_dim, 1, self.num_freq)
 
 
@@ -424,8 +423,6 @@ class GConvSE3Partial(nn.Module):
         def fnc(edges):
             # Neighbor -> center messages
             msg = 0
-            print(self.f_in.structure)
-            print(edges.src.keys())
             for m_in, d_in in self.f_in.structure:
                 src = edges.src[f'{d_in}'].view(-1, m_in*(2*d_in+1), 1)
                 edge = edges.data[f'({d_in},{d_out})']
@@ -447,9 +444,7 @@ class GConvSE3Partial(nn.Module):
         Returns: 
             tensor with new features [B, n_points, n_features_out]
         """
-        print(G)
         with G.local_scope():
-            print(h)
             # Add node features to local graph scope
             for k, v in h.items():
                 G.ndata[k] = v
@@ -457,17 +452,14 @@ class GConvSE3Partial(nn.Module):
             # Add edge features
             w = G.edata['w']
             feat = torch.cat([w, r], -1)
-            print(self.f_in.structure, self.f_out.structure)
             for (mi, di) in self.f_in.structure:
                 for (mo, do) in self.f_out.structure:
                     etype = f'({di},{do})'
                     G.edata[etype] = self.kernel_unary[etype](feat, basis)
-            print(G)
+
             # Perform message-passing for each output feature type
             for d in self.f_out.degrees:
-                print(d)
                 x = self.udf_u_mul_e(d)
-                print(x)
                 G.apply_edges(x)
 
             return {f'{d}': G.edata[f'out{d}'] for d in self.f_out.degrees}
@@ -529,6 +521,7 @@ class GMABSE3(nn.Module):
             ## We use the stacked tensor representation for attention
             for m, d in self.f_value.structure:
                 G.edata[f'v{d}'] = v[f'{d}'].view(-1, self.n_heads, m//self.n_heads, 2*d+1)
+            c = fiber2head(k, self.n_heads, self.f_key, squeeze=True)
             G.edata['k'] = fiber2head(k, self.n_heads, self.f_key, squeeze=True)
             G.ndata['q'] = fiber2head(q, self.n_heads, self.f_key, squeeze=True)
 

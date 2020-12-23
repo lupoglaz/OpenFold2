@@ -1,7 +1,7 @@
 import math
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+from equivariant_attention.from_se3cnn.utils_steerable import get_spherical_from_cartesian
 import dgl
 import numpy as np
 
@@ -11,7 +11,7 @@ def collate(samples):
 	return batched_graph, torch.tensor(y)
 
 class AtomDataset(Dataset):
-	num_bonds = 1
+	num_bonds = 2
 	def __init__(self, data, block_size):
 		r, v = data
 		assert r.shape[0] == v.shape[0]
@@ -29,6 +29,8 @@ class AtomDataset(Dataset):
 			for j in range(self.num_atoms):
 				if i!=j:
 					adjacency[(i,j)] = self.num_bonds - 1
+		
+		
 		src = []
 		dst = []
 		w = []
@@ -45,21 +47,22 @@ class AtomDataset(Dataset):
 
 	def __getitem__(self, idx):
 		r, v = self.data[0][idx,:,:].astype(np.float32), self.data[1][idx,:,:].astype(np.float32)
+		m = np.ones((v.shape[0],1)).astype(np.float32)
 		r_tgt, v_tgt = self.data[0][idx + self.block_size, :, :].astype(np.float32), self.data[1][idx + self.block_size, :, :].astype(np.float32)
-
 		src, dst, w = self.connect_fully()
-		G = dgl.DGLGraph((src, dst))
+		w = self.to_one_hot(w, self.num_bonds).astype(np.float32)
 		
+		G = dgl.DGLGraph((src, dst))
+		# v = get_spherical_from_cartesian(v).astype(np.float32)
 		#Node features
 		G.ndata['x'] = r
-		G.ndata['f'] = v
-
+		G.ndata['f'] = np.expand_dims(np.concatenate([m,v],axis=1), axis=2)
+		
 		#Edge features
 		G.edata['d'] = r[dst] - r[src]
-		G.edata['w'] = self.to_one_hot(w, self.num_bonds).astype(np.float32)
+		G.edata['w'] = w
 		
-		y = np.concatenate([r_tgt, v_tgt], -1)
-		return G, y
+		return G, (r_tgt - r).astype(np.float32)#get_spherical_from_cartesian(r_tgt - r).astype(np.float32)
 
 	def __len__(self):
 		return self.data_size - self.block_size
