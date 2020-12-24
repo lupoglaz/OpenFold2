@@ -78,7 +78,7 @@ class SE3Transformer(nn.Module):
 		optimizer = torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
 		return optimizer
 
-	def forward(self, G, targets):
+	def forward(self, G, G_tgt):
 		# Compute equivariant weight basis from relative positions
 		basis, r = get_basis_and_r(G, self.config.num_degrees-1)
 
@@ -89,11 +89,14 @@ class SE3Transformer(nn.Module):
 		
 		#Unbatching graphs
 		G.ndata['o'] = h['1']
-		vec = torch.stack([g.ndata['o'] for g in dgl.unbatch(G)], dim=0).squeeze(dim=2)
-		
+		outputs = [g.ndata['o'].squeeze() for g in dgl.unbatch(G)]
+				
 		loss = None
-		if not (targets is None):
-			loss = torch.sqrt(torch.sum((vec - targets)**2, dim=-1) + 1E-5)
-			loss = torch.mean(loss, dim=-1)
-
-		return vec, loss
+		if not (G_tgt is None):
+			targets = [g.ndata['d'] for g in dgl.unbatch(G_tgt)]
+			losses = []
+			for output, target in zip(outputs, targets):
+				loss = torch.sqrt(torch.sum((output - target)**2, dim=-1) + 1E-5)
+				losses.append(torch.mean(loss, dim=-1))
+			losses = torch.stack(losses, dim=0)
+		return outputs, losses

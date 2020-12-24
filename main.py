@@ -75,7 +75,7 @@ if __name__ == '__main__':
 		sys.exit()
 
 	elif args.cmd() == 'test':
-		block_size = 128
+		block_size = 10
 		with open('dataset/data_test.pkl', 'rb') as fin:
 			data = pkl.load(fin)
 		test_dataset = AtomDataset(data, block_size)
@@ -85,8 +85,8 @@ if __name__ == '__main__':
 		test(model_config, test_config, test_dataset)
 
 	elif args.cmd() == 'train':
-		block_size = 128
-		with open('dataset/data.pkl', 'rb') as fin:
+		block_size = 10
+		with open('dataset/data_train.pkl', 'rb') as fin:
 			data = pkl.load(fin)
 		train_dataset = AtomDataset(data, block_size)
 

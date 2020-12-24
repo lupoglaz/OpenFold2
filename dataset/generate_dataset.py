@@ -1,8 +1,10 @@
 
 ##Rewritten https://github.com/pmocz/nbody-python
 ##problem: when two particles are close energy is not conserved
+import sys
 import numpy as np
 import _pickle as pkl
+import argparse
 class SimConfig:
 	N=100    # Number of particles
 	tEnd=0.5   # time at which simulation ends
@@ -84,17 +86,49 @@ def visualize(r, v, config):
 	plt.legend()
 	plt.savefig('energy.png')
 
-if __name__ == '__main__':
-	N=10
+def generate_train_set(num_sim=100):
+	sims = []
+	for i in range(num_sim):
+		N = np.random.randint(5, 20)
+		mass = 20.0*np.ones((N,1))/N
+		pos  = np.random.randn(N,3)
+		vel  = np.random.randn(N,3)
+		vel -= np.mean(mass * vel, 0) / np.mean(mass)
+		config = SimConfig(tEnd = 2.0)
+		
+		r, v = simulate(mass, pos, vel, config)
+		sims.append((r,v))
+
+	with open('data_train.pkl', 'wb') as fout:
+		pkl.dump(sims, fout)
+	# visualize(r, v, config)
+
+def generate_test_set():
+	N = np.random.randint(5, 20)
 	mass = 20.0*np.ones((N,1))/N
 	pos  = np.random.randn(N,3)
 	vel  = np.random.randn(N,3)
 	vel -= np.mean(mass * vel, 0) / np.mean(mass)
 	config = SimConfig(tEnd = 2.0)
-
 	r, v = simulate(mass, pos, vel, config)
+	sims = [(r,v)]
+	with open('data_test.pkl', 'wb') as fout:
+		pkl.dump(sims, fout)
+	
 	# visualize(r, v, config)
 
-	with open('data_test.pkl', 'wb') as fout:
-		pkl.dump((r,v), fout)
+
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser(description='Train deep protein docking')	
+	parser.add_argument('-train', action='store_const', const=lambda:'train', dest='cmd')
+	parser.add_argument('-test', action='store_const', const=lambda:'test', dest='cmd')
+	args = parser.parse_args()
+
+	if args.cmd is None:
+		parser.print_help()
+		sys.exit()
+	elif args.cmd() == 'test':
+		generate_test_set()
+	elif args.cmd() == 'train':
+		generate_train_set()
 	

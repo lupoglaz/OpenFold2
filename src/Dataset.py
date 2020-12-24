@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 import math
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -5,28 +9,35 @@ from equivariant_attention.from_se3cnn.utils_steerable import get_spherical_from
 import dgl
 import numpy as np
 
+
+
 def collate(samples):
-	graphs, y = map(list, zip(*samples))
-	batched_graph = dgl.batch(graphs)
-	return batched_graph, torch.tensor(y)
+	input, target = map(list, zip(*samples))
+	input_graph = dgl.batch(input)
+	target_graph = dgl.batch(target)
+	return input_graph, target_graph
 
 class AtomDataset(Dataset):
 	num_bonds = 2
 	def __init__(self, data, block_size):
-		r, v = data
-		assert r.shape[0] == v.shape[0]
-		assert r.shape[1] == v.shape[1]
-		data_size, num_atoms = r.shape[0], r.shape[1]
-		print(f'Data: {data_size} timesteps, {num_atoms} atoms')
-		self.block_size = block_size
-		self.num_atoms = num_atoms
-		self.data_size = data_size
-		self.data = data
+		self.data = []
+		for r,v in data:
+			assert r.shape[0] == v.shape[0]
+			assert r.shape[1] == v.shape[1]
+			Nt = r.shape[0]
+			num_atoms = r.shape[1]
+			src, dst, w = self.connect_fully(num_atoms)
+			for timestep in range(Nt-block_size):
+				datapoint = r[timestep,:,:], v[timestep,:,:], r[timestep+block_size,:,:], src, dst, w
+				self.data.append(datapoint)
+		
+		self.data_size = len(self.data)
+		print(f'Data: {self.data_size} timesteps')
 
-	def connect_fully(self):
+	def connect_fully(self, num_atoms):
 		adjacency = {}
-		for i in range(self.num_atoms):
-			for j in range(self.num_atoms):
+		for i in range(num_atoms):
+			for j in range(num_atoms):
 				if i!=j:
 					adjacency[(i,j)] = self.num_bonds - 1
 		
@@ -46,23 +57,38 @@ class AtomDataset(Dataset):
 		return one_hot
 
 	def __getitem__(self, idx):
-		r, v = self.data[0][idx,:,:].astype(np.float32), self.data[1][idx,:,:].astype(np.float32)
-		m = np.ones((v.shape[0],1)).astype(np.float32)
-		r_tgt, v_tgt = self.data[0][idx + self.block_size, :, :].astype(np.float32), self.data[1][idx + self.block_size, :, :].astype(np.float32)
-		src, dst, w = self.connect_fully()
-		w = self.to_one_hot(w, self.num_bonds).astype(np.float32)
+		r, v, r_tgt, src, dst, w = self.data[idx]
+		m = np.ones((v.shape[0],1))
+		w = self.to_one_hot(w, self.num_bonds)
 		
 		G = dgl.DGLGraph((src, dst))
-		# v = get_spherical_from_cartesian(v).astype(np.float32)
 		#Node features
-		G.ndata['x'] = r
-		G.ndata['f'] = np.expand_dims(np.concatenate([m,v],axis=1), axis=2)
+		G.ndata['x'] = r.astype(np.float32)
+		G.ndata['f'] = np.expand_dims(np.concatenate([m,v],axis=1), axis=2).astype(np.float32)
 		
 		#Edge features
-		G.edata['d'] = r[dst] - r[src]
-		G.edata['w'] = w
+		G.edata['d'] = (r[dst] - r[src]).astype(np.float32)
+		G.edata['w'] = w.astype(np.float32)
 		
-		return G, (r_tgt - r).astype(np.float32)#get_spherical_from_cartesian(r_tgt - r).astype(np.float32)
+		G_tgt = dgl.DGLGraph((src, dst))
+		G_tgt.ndata['d'] = (r_tgt - r).astype(np.float32)
+		return G, G_tgt
 
 	def __len__(self):
-		return self.data_size - self.block_size
+		return self.data_size
+
+if __name__=='__main__':
+	import _pickle as pkl
+	block_size = 128
+	with open('../dataset/data.pkl', 'rb') as fin:
+		data = pkl.load(fin)
+
+	dataset = AtomDataset(data, block_size)
+
+	stream = DataLoader(dataset, shuffle=True, pin_memory=True, 
+						batch_size=1, num_workers=0, collate_fn=collate)
+
+	for G_inp, G_tgt in stream:
+		print(G_inp)
+		print(G_tgt)
+		break

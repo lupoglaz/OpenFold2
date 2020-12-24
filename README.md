@@ -11,3 +11,10 @@ The dynamics looks like:
 
 Energy is appriximatelly conserved:
 ![Alt Text](dataset/energy.png)
+
+## Results
+So far, the train/test results are:
+phase | Loss (abs)
+------| ---------
+Train | 0.009
+Test  | 0.112
