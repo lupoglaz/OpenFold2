@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 import torch
 from torch.utils.data import DataLoader
 
-from src.Model import SE3Transformer, SE3TConfig
+from src.Model import SE3Transformer, SE3TConfig, SE3TransformerIt
 from src.Trainer import Trainer, TrainerConfig
 from src.Dataset import AtomDataset, collate
 
@@ -25,7 +25,8 @@ def train(model_config, train_config, train_dataset):
 			else:
 				print(f'Excluding device: {i}:{torch.cuda.get_device_name(i)}')
 	
-	model = SE3Transformer(model_config)
+	# model = SE3Transformer(model_config)
+	model = SE3TransformerIt(model_config)
 	trainer = Trainer(model, train_config, device_ids=None)
 
 	train_stream = DataLoader(  train_dataset, shuffle=True, pin_memory=True, 
@@ -44,7 +45,8 @@ def train(model_config, train_config, train_dataset):
 		trainer.save_checkpoint()
 
 def test(model_config, train_config, test_dataset):
-	model = SE3Transformer(model_config)
+	# model = SE3Transformer(model_config)
+	model = SE3TransformerIt(model_config)
 	trainer = Trainer(model, train_config)
 	trainer.load_checkpoint()
 
@@ -67,8 +69,8 @@ if __name__ == '__main__':
 		
 	args = parser.parse_args()
 	
-	model_config = SE3TConfig()
-
+	model_config = SE3TConfig(num_layers = 1, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 4)
+	# torch.autograd.set_detect_anomaly(True)
 		
 	if args.cmd is None:
 		parser.print_help()
@@ -78,7 +80,7 @@ if __name__ == '__main__':
 		block_size = 10
 		with open('dataset/data_test.pkl', 'rb') as fin:
 			data = pkl.load(fin)
-		test_dataset = AtomDataset(data, block_size)
+		test_dataset = AtomDataset(data, block_size, tgt='dist')
 
 		test_config = TrainerConfig(batch_size=32, num_workers=4, ckpt_path = 'checkpoint.th')
 
@@ -88,9 +90,9 @@ if __name__ == '__main__':
 		block_size = 10
 		with open('dataset/data_train.pkl', 'rb') as fin:
 			data = pkl.load(fin)
-		train_dataset = AtomDataset(data, block_size)
+		train_dataset = AtomDataset(data, block_size, tgt='dist')
 
-		train_config = TrainerConfig(max_epochs=300, batch_size=32, learning_rate=6e-3, 
+		train_config = TrainerConfig(max_epochs=100, batch_size=32, learning_rate=6e-3, 
 									lr_decay=False, warmup_tokens=64*20, 
 									final_tokens=2*len(train_dataset)*block_size, 
 									num_workers=4, ckpt_path = 'checkpoint.th')

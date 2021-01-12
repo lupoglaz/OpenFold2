@@ -31,7 +31,7 @@ class Trainer:
 		self.model = model
 		self.config = config
 
-		self.device = 'cpu'
+		self.device = torch.device('cpu')
 		if torch.cuda.is_available():
 			self.device = torch.device(torch.cuda.current_device())
 			print(self.device)

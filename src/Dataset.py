@@ -19,7 +19,8 @@ def collate(samples):
 
 class AtomDataset(Dataset):
 	num_bonds = 2
-	def __init__(self, data, block_size):
+	def __init__(self, data, block_size, tgt='dist'):
+		self.tgt = tgt
 		self.data = []
 		for r,v in data:
 			assert r.shape[0] == v.shape[0]
@@ -71,7 +72,11 @@ class AtomDataset(Dataset):
 		G.edata['w'] = w.astype(np.float32)
 		
 		G_tgt = dgl.DGLGraph((src, dst))
-		G_tgt.ndata['d'] = (r_tgt - r).astype(np.float32)
+		if self.tgt == 'dist':
+			G_tgt.ndata['d'] = (r_tgt - r).astype(np.float32)
+		elif self.tgt == 'coord':
+			G_tgt.ndata['x'] = (r_tgt).astype(np.float32)
+			
 		return G, G_tgt
 
 	def __len__(self):
@@ -80,7 +85,7 @@ class AtomDataset(Dataset):
 if __name__=='__main__':
 	import _pickle as pkl
 	block_size = 128
-	with open('../dataset/data.pkl', 'rb') as fin:
+	with open('../dataset/data_test.pkl', 'rb') as fin:
 		data = pkl.load(fin)
 
 	dataset = AtomDataset(data, block_size)
