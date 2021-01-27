@@ -4,14 +4,15 @@ import logging
 from tqdm import tqdm
 import numpy as np
 import argparse
+from pathlib import Path
 logger = logging.getLogger(__name__)
 
 import torch
 from torch.utils.data import DataLoader
 
-from src.Model import SE3Transformer, SE3TConfig, SE3TransformerIt
+from src.Model import SE3TConfig, SE3TransformerIt
 from src.Trainer import Trainer, TrainerConfig
-from src.Dataset import AtomDataset, collate
+from src.ProteinDataset import ProteinDataset, collate
 
 import _pickle as pkl
 
@@ -25,7 +26,6 @@ def train(model_config, train_config, train_dataset):
 			else:
 				print(f'Excluding device: {i}:{torch.cuda.get_device_name(i)}')
 	
-	# model = SE3Transformer(model_config)
 	model = SE3TransformerIt(model_config)
 	trainer = Trainer(model, train_config, device_ids=None)
 
@@ -45,7 +45,6 @@ def train(model_config, train_config, train_dataset):
 		trainer.save_checkpoint()
 
 def test(model_config, train_config, test_dataset):
-	# model = SE3Transformer(model_config)
 	model = SE3TransformerIt(model_config)
 	trainer = Trainer(model, train_config)
 	trainer.load_checkpoint()
@@ -69,7 +68,7 @@ if __name__ == '__main__':
 		
 	args = parser.parse_args()
 	
-	model_config = SE3TConfig(num_layers = 1, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 4)
+	model_config = SE3TConfig(num_layers = 2, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 4)
 	# torch.autograd.set_detect_anomaly(True)
 		
 	if args.cmd is None:
@@ -77,24 +76,20 @@ if __name__ == '__main__':
 		sys.exit()
 
 	elif args.cmd() == 'test':
-		block_size = 10
-		with open('dataset/data_test.pkl', 'rb') as fin:
-			data = pkl.load(fin)
-		test_dataset = AtomDataset(data, block_size, tgt='dist')
+		
+		test_dataset = ProteinDataset(Path('dataset/protein_samples/list.dat'))
 
 		test_config = TrainerConfig(batch_size=32, num_workers=4, ckpt_path = 'checkpoint.th')
 
 		test(model_config, test_config, test_dataset)
 
 	elif args.cmd() == 'train':
-		block_size = 10
-		with open('dataset/data_train.pkl', 'rb') as fin:
-			data = pkl.load(fin)
-		train_dataset = AtomDataset(data, block_size, tgt='dist')
+		
+		train_dataset = ProteinDataset(Path('dataset/protein_samples/list.dat'))
 
 		train_config = TrainerConfig(max_epochs=100, batch_size=32, learning_rate=6e-3, 
 									lr_decay=False, warmup_tokens=64*20, 
-									final_tokens=2*len(train_dataset)*block_size, 
+									final_tokens=2*len(train_dataset)*10, 
 									num_workers=4, ckpt_path = 'checkpoint.th')
 
 		train(model_config, train_config, train_dataset)

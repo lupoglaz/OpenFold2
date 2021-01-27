@@ -288,7 +288,7 @@ class G1x1SE3(nn.Module):
         for m_out, d_out in self.f_out.structure:
             m_in = self.f_in.structure_dict[d_out]
             self.transform[str(d_out)] = nn.Parameter(torch.randn(m_out, m_in) / np.sqrt(m_in))
-
+            
     def __repr__(self):
          return f"G1x1SE3(structure={self.f_out})"
 

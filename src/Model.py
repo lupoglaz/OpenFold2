@@ -12,8 +12,12 @@ from equivariant_attention.modules import GSE3Res, GNormSE3, GConvSE3, GAvgPooli
 from .Cartesian2Spherical import Cartesian2Spherical
 from .Basis import Basis
 from .SphericalHarmonics import SphericalHarmonics
+from .StructureModule import StructureModule
+
+from TorchProteinLibrary.RMSD import Coords2RMSD
 
 class SE3TConfig:
+	embedding_dim = 32
 	num_layers = 4
 	num_degrees = 3
 	edge_dim = 2
@@ -25,87 +29,6 @@ class SE3TConfig:
 		for k, v in kwargs.items():
 			setattr(self, k, v)
 
-class TutorialTransformer(nn.Module):
-	def __init__(self, config):
-		super().__init__()
-		# Build the network
-		self.config = config
-
-		self.fibers = {'in': Fiber(structure=[(4, 0)]),
-					   'mid': Fiber(structure=[(3, 0)]),
-					   'out': Fiber(structure=[(3, 0)])}
-		self.block = GSE3Res(self.fibers['in'], self.fibers['mid'], edge_dim=self.config.edge_dim, 
-								  div=self.config.div, n_heads=self.config.n_heads)
-		self.norm = GNormSE3(self.fibers['mid'])
-		self.out = GConvSE3(self.fibers['mid'], self.fibers['out'], self_interaction=True, edge_dim=self.config.edge_dim)
-        
-	def configure_optimizers(self, train_config):
-		optimizer = torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
-		return optimizer
-
-	def forward(self, G, y):
-		basis, r = get_basis_and_r(G, self.config.num_degrees-1)
-		h = {'0': G.ndata['f']}
-		y = self.block(h, G=G, r=r, basis=basis)
-		z = self.norm(y, G=G, r=r, basis=basis)
-		w = self.out(z, G=G, r=r, basis=basis)
-		print(w)
-		sys.exit()
-
-class SE3Transformer(nn.Module):
-	"""SE(3) equivariant GCN with attention: https://github.com/FabianFuchsML/se3-transformer-public/blob/master/experiments/qm9/models.py"""
-	def __init__(self, config):
-		super().__init__()
-		# Build the network
-		self.config = config
-		
-		self.fibers = {'in': Fiber(structure=[(1, 1)]),
-					   'mid': Fiber(structure=[(32, 0), (16, 1), (4, 2)]),
-					   'out': Fiber(structure=[(1, 1)])}
-
-		self.Gblock = self._build_gcn(self.fibers, 1)
-		# self.loss = torch.nn.MSE()
-		
-	def _build_gcn(self, fibers, out_dim):
-		# Equivariant layers
-		Gblock = []
-		fin = fibers['in']
-		for i in range(self.config.num_layers):
-			Gblock.append(GSE3Res(fin, fibers['mid'], edge_dim=self.config.edge_dim, 
-								  div=self.config.div, n_heads=self.config.n_heads))
-			Gblock.append(GNormSE3(fibers['mid']))
-			fin = fibers['mid']
-		Gblock.append(GConvSE3(fibers['mid'], fibers['out'], self_interaction=True, edge_dim=self.config.edge_dim))
-
-		return nn.ModuleList(Gblock)
-
-	def configure_optimizers(self, train_config):
-		optimizer = torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
-		return optimizer
-
-	def forward(self, G, G_tgt):
-		# Compute equivariant weight basis from relative positions
-		basis, r = get_basis_and_r(G, self.config.num_degrees-1)
-
-		# encoder (equivariant layers)
-		h = {'1': G.ndata['f'][:,1:,:].squeeze().unsqueeze(dim=1)}
-		for layer in self.Gblock:
-			h = layer(h, G=G, r=r, basis=basis)
-		
-		#Unbatching graphs
-		G.ndata['o'] = h['1']
-		outputs = [g.ndata['o'].squeeze() for g in dgl.unbatch(G)]
-				
-		loss = None
-		if not (G_tgt is None):
-			targets = [g.ndata['d'] for g in dgl.unbatch(G_tgt)]
-			losses = []
-			for output, target in zip(outputs, targets):
-				loss = torch.sqrt(torch.sum((output - target)**2, dim=-1) + 1E-5)
-				losses.append(torch.mean(loss, dim=-1))
-			losses = torch.stack(losses, dim=0)
-		return outputs, losses
-
 
 class SE3TransformerIt(nn.Module):
 	"""Iterative SE(3) equivariant GCN with attention: https://github.com/FabianFuchsML/se3-transformer-public/blob/master/experiments/qm9/models.py"""
@@ -114,26 +37,29 @@ class SE3TransformerIt(nn.Module):
 		# Build the network
 		self.config = config
 		
-		self.fibers = {'in': Fiber(structure=[(1, 1)]),
+		self.fibers = {'in': Fiber(structure=[(self.config.embedding_dim, 0), (2, 1)]),
 					   'mid': Fiber(structure=[(32, 0), (16, 1), (4, 2)]),
-					   'out': Fiber(structure=[(1, 1)])}
+					   'out': Fiber(structure=[(self.config.embedding_dim, 0), (2, 1)])}
 
 		self.Gblock = self._build_gcn(self.fibers, 1)
 		self.sph_har = SphericalHarmonics(max_degree=2*(self.config.num_degrees))
 		self.car2sph = Cartesian2Spherical()
 		self.basis = Basis(max_degree=self.config.num_degrees)
 		# self.loss = torch.nn.MSE()
-		
+		self.embedding = nn.Embedding(20, self.config.embedding_dim)
+		self.structure = StructureModule()
+		self.loss = Coords2RMSD()
+
 	def _build_gcn(self, fibers, out_dim):
 		# Equivariant layers
 		Gblock = []
 		fin = fibers['in']
 		for i in range(self.config.num_layers):
-			Gblock.append(GSE3Res(fin, fibers['mid'], edge_dim=self.config.edge_dim, 
+			Gblock.append(GSE3Res(fin, fibers['mid'], edge_dim=self.config.embedding_dim, 
 								  div=self.config.div, n_heads=self.config.n_heads))
 			Gblock.append(GNormSE3(fibers['mid']))
 			fin = fibers['mid']
-		Gblock.append(GConvSE3(fibers['mid'], fibers['out'], self_interaction=True, edge_dim=self.config.edge_dim))
+		Gblock.append(GConvSE3(fibers['mid'], fibers['out'], self_interaction=True, edge_dim=self.config.embedding_dim))
 
 		return nn.ModuleList(Gblock)
 
@@ -141,33 +67,52 @@ class SE3TransformerIt(nn.Module):
 		optimizer = torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
 		return optimizer
 
-	def forward(self, G, G_tgt):
-		inputs = [g.ndata['x'].squeeze().clone().detach() for g in dgl.unbatch(G)]
+	def forward(self, G, target):		
+		G.ndata['f'] = self.embedding(G.ndata['s'].squeeze())
+		src, dst = G.all_edges()
+		G.edata['w'] = G.ndata['f'][src] * G.ndata['f'][dst]
+		
 		for iter in range(self.config.num_iter):
 			#Equivariant basis
 			r_sp = self.car2sph(G.edata['d'])
 			Y = self.sph_har(r_sp)
 			basis = self.basis(Y)
 			
+			#First input, zeroing empty inputs
+			if iter == 0:
+				h = {'0': G.ndata['f'].unsqueeze(dim=-1),
+					'1': torch.zeros(G.ndata['f'].size(0), 2, 3, dtype=G.ndata['f'].dtype, device=G.ndata['f'].device)
+					}
 			#Transformer blocks
-			h = {'1': G.ndata['f'][:,1:,:].squeeze().unsqueeze(dim=1)}
 			for layer in self.Gblock:
 				h = layer(h, G=G, r=r_sp[:, self.car2sph.ind_radius].unsqueeze(dim=-1), basis=basis)
-
+				
 			#Updating coordinates
 			src, dst = G.all_edges()
-			G.ndata['x'] = G.ndata['x'] + h['1'].squeeze()
+			G.ndata['x'] = G.ndata['x'] + h['1'][:,0,:]
 			G.edata['d'] = G.ndata['x'][dst] - G.ndata['x'][src]
-			
+		
+		#Converting vector fields into structure
+		G.ndata['r'] = self.structure(h['1'])
+		
 		#Unbatching graphs
-		outputs = [g.ndata['x'].squeeze() - x0 for g, x0 in zip(dgl.unbatch(G), inputs)]
-				
+		batch_size = len(list(dgl.unbatch(G)))
+		max_num_res = max([g.number_of_nodes() for g in dgl.unbatch(G)])
+		num_atoms = torch.zeros(batch_size, dtype=torch.int, device=G.ndata['r'].device)
+		max_num_atoms = 3*max_num_res
+		structs = []
+		for i, g in enumerate(dgl.unbatch(G)):
+			num_res = g.ndata['r'].size(0)
+			num_atoms[i] = 3*num_res
+			struct = g.ndata['r'].contiguous().flatten().unsqueeze(dim=0)
+			if num_atoms[i].item() < max_num_atoms:
+				struct = torch.cat([struct, torch.zeros(1, (max_num_atoms-num_atoms[i].item())*3, dtype=struct.dtype, device=struct.device) ], dim=1)
+			structs.append(struct)
+
+		structs = torch.cat(structs, dim=0)
+		
 		loss = None
-		if not (G_tgt is None):
-			targets = [g.ndata['d'] for g in dgl.unbatch(G_tgt)]
-			losses = []
-			for output, target in zip(outputs, targets):
-				loss = torch.sqrt(torch.sum((output - target)**2, dim=-1) + 1E-5)
-				losses.append(torch.mean(loss, dim=-1))
-			losses = torch.stack(losses, dim=0)
-		return outputs, losses
+		if not (target is None):
+			losses = self.loss(structs, target, num_atoms)
+
+		return structs, losses
