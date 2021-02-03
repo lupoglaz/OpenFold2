@@ -47,7 +47,7 @@ def train(model_config, train_config, train_dataset):
 def test(model_config, train_config, test_dataset):
 	model = SE3TransformerIt(model_config)
 	trainer = Trainer(model, train_config)
-	trainer.load_checkpoint()
+	# trainer.load_checkpoint()
 
 	test_stream = DataLoader(  test_dataset, shuffle=False, pin_memory=True, 
 								batch_size=train_config.batch_size, 
@@ -77,17 +77,17 @@ if __name__ == '__main__':
 
 	elif args.cmd() == 'test':
 		
-		test_dataset = ProteinDataset(Path('dataset/protein_samples/list.dat'))
+		test_dataset = ProteinDataset(Path('dataset/test/list.dat'))
 
-		test_config = TrainerConfig(batch_size=32, num_workers=4, ckpt_path = 'checkpoint.th')
+		test_config = TrainerConfig(batch_size=10, num_workers=4, ckpt_path = 'checkpoint.th')
 
 		test(model_config, test_config, test_dataset)
 
 	elif args.cmd() == 'train':
 		
-		train_dataset = ProteinDataset(Path('dataset/protein_samples/list.dat'))
+		train_dataset = ProteinDataset(Path('dataset/train/list.dat'))
 
-		train_config = TrainerConfig(max_epochs=100, batch_size=32, learning_rate=6e-3, 
+		train_config = TrainerConfig(max_epochs=100, batch_size=8, learning_rate=6e-3, 
 									lr_decay=False, warmup_tokens=64*20, 
 									final_tokens=2*len(train_dataset)*10, 
 									num_workers=4, ckpt_path = 'checkpoint.th')

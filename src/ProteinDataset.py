@@ -20,16 +20,18 @@ def _tensor2str(tensor):
 	return (tensor.numpy().astype(dtype=np.uint8).tobytes().split(b'\00')[0]).decode("utf-8")
 
 def collate(samples):
-	input, target = map(list, zip(*samples))
+	input, target_batch = map(list, zip(*samples))
 	input_graph = dgl.batch(input)
 	
-	max_size = max([tgt.size(1) for tgt in target])
-	targets = []
-	for tgt in target:
+	max_size = max([tgt.size(1) for tgt in target_batch])
+	target_tensor = []
+	for tgt in target_batch:
 		if tgt.size(1)<max_size:
-			tgt = torch.cat([tgt, torch.zeros(max_size-tgt.size(1), dtype=tgt.dtype, device=tgt.device)], dim=1)
-		targets.append(tgt)
-	target_coords = torch.cat(targets, dim=0)
+			target = torch.cat([tgt, torch.zeros(1, max_size-tgt.size(1), dtype=tgt.dtype, device=tgt.device)], dim=1)
+			target_tensor.append(target)
+		else:
+			target_tensor.append(tgt)
+	target_coords = torch.cat(target_tensor, dim=0)
 	return input_graph, target_coords
 
 class ProteinDataset(Dataset):
