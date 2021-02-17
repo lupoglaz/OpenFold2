@@ -197,7 +197,7 @@ class Sampler:
 		center = Coords2Center()
 		
 		if visualize:
-			fig = plt.figure(figsize=plt.figaspect(0.3))
+			fig = plt.figure(figsize=plt.figaspect(1))
 			ax = fig.add_subplot(1, 1, 1, projection='3d')
 
 		T = torch.tensor([[0, 0, 0]], dtype=torch.float32)
@@ -249,7 +249,7 @@ class Sampler:
 		optimizer = torch.optim.Adam([angles], lr = 0.05)
 		
 		if visualize:
-			fig = plt.figure(figsize=plt.figaspect(0.3))
+			fig = plt.figure(figsize=plt.figaspect(0.5))
 			camera = Camera(fig)
 			ax_prot = fig.add_subplot(1, 2, 1, projection='3d')
 			ax_loss = fig.add_subplot(1, 2, 2)
@@ -287,7 +287,7 @@ class Sampler:
 		
 		if visualize:
 			animation = camera.animate()
-			animation.save('animation.mp4')
+			animation.save('anim.gif')
 		
 		return min_angles, min_loss
 	
@@ -307,7 +307,10 @@ if __name__=='__main__':
 	a2c = Angles2Coords()
 	ptrn = Patterns()
 	smpl = Sampler(ptrn, min_num_blocks=1, max_num_blocks=4, block_min_length=5, block_max_length=10)
-	
+	# angles, sequence = smpl.generate()
+	# smpl.position(visualize=True)
+	# min_angles, min_rmsd = smpl.optimize(angles, sequence, visualize=True)
+	# sys.exit()
 	
 	fig = plt.figure(figsize=plt.figaspect(0.3))
 	with open(f'{args.name}/list.dat', 'wt') as fout:
