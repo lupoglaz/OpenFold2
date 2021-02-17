@@ -386,13 +386,14 @@ if __name__=='__main__':
 	a2c = Angles2Coords()
 	ptrn = Patterns()
 	smpl = Sampler(ptrn, min_num_blocks=1, max_num_blocks=6, block_min_length=5, block_max_length=15)
-	# angles, sequences = smpl.generate()	
-	# smpl.position(visualize=True)
-	# min_angles, min_rmsd = smpl.optimize(angles, [sequences[0]], visualize=True)
-	# plot_msa(sequences, smpl)
+	angles, sequences = smpl.generate()	
+	smpl.position(visualize=True)
+	min_angles, min_rmsd = smpl.optimize(angles, [sequences[0]], visualize=True)
+	plot_msa(sequences, smpl)
+	sys.exit()
 	
 	fig = plt.figure(figsize=plt.figaspect(0.3))
-	
+
 	with open(f'{args.name}/list.dat', 'wt') as fout:
 		for i in tqdm(range(args.size)):
 			angles, msa = smpl.generate()

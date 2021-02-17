@@ -13,6 +13,7 @@ from .Cartesian2Spherical import Cartesian2Spherical
 from .Basis import Basis
 from .SphericalHarmonics import SphericalHarmonics
 from .StructureModule import StructureModule
+from .Transformer import SelfAttention, TransformerBlock
 
 from TorchProteinLibrary.RMSD import Coords2RMSD
 
@@ -50,6 +51,8 @@ class SE3TransformerIt(nn.Module):
 		self.structure = StructureModule()
 		self.loss = Coords2RMSD()
 
+		self.attn = SelfAttention(config)
+
 	def _build_gcn(self, fibers, out_dim):
 		# Equivariant layers
 		Gblock = []
@@ -61,13 +64,16 @@ class SE3TransformerIt(nn.Module):
 			fin = fibers['mid']
 		Gblock.append(GConvSE3(fibers['mid'], fibers['out'], self_interaction=True, edge_dim=self.config.embedding_dim))
 
+		
 		return nn.ModuleList(Gblock)
 
 	def configure_optimizers(self, train_config):
 		optimizer = torch.optim.AdamW(self.parameters(), lr=train_config.learning_rate, betas=train_config.betas)
 		return optimizer
 
-	def forward(self, G, target):		
+	def forward(self, msa, G, target):
+		self.attn(msa)
+		sys.exit()
 		G.ndata['f'] = self.embedding(G.ndata['s'].squeeze())
 		src, dst = G.all_edges()
 		G.edata['w'] = G.ndata['f'][src] * G.ndata['f'][dst]

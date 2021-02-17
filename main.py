@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 
 from src.Model import SE3TConfig, SE3TransformerIt
 from src.Trainer import Trainer, TrainerConfig
-from src.ProteinDataset import ProteinDataset, collate
+from src.MSADataset import MSADataset, collate
 
 import _pickle as pkl
 
@@ -36,8 +36,8 @@ def train(model_config, train_config, train_dataset):
 
 	for epoch in range(train_config.max_epochs):
 		losses = []
-		for x,y in tqdm(train_stream):
-			loss = trainer.step(x,y)
+		for msa, x, y in tqdm(train_stream):
+			loss = trainer.step(msa, x, y)
 			losses.append(loss)
 			
 		print(f"Epoch {epoch}, train loss = {np.mean(losses)}")
@@ -54,8 +54,8 @@ def test(model_config, train_config, test_dataset):
 								num_workers=train_config.num_workers,
 								collate_fn=collate)
 	losses = []
-	for x,y in tqdm(test_stream):
-		loss = trainer.step(x,y)
+	for msa, x,y in tqdm(test_stream):
+		loss = trainer.step(msa, x, y)
 		losses.append(loss)
 		
 	print(f"Test loss = {np.mean(losses)}")
@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
 	elif args.cmd() == 'test':
 		
-		test_dataset = ProteinDataset(Path('dataset/test/list.dat'))
+		test_dataset = MSADataset(Path('dataset/test/list.dat'))
 
 		test_config = TrainerConfig(batch_size=10, num_workers=4, ckpt_path = 'checkpoint.th')
 
@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
 	elif args.cmd() == 'train':
 		
-		train_dataset = ProteinDataset(Path('dataset/train/list.dat'))
+		train_dataset = MSADataset(Path('dataset/train/list.dat'))
 
 		train_config = TrainerConfig(max_epochs=100, batch_size=8, learning_rate=6e-3, 
 									lr_decay=False, warmup_tokens=64*20, 
