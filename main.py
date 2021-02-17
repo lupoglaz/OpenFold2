@@ -68,7 +68,7 @@ if __name__ == '__main__':
 		
 	args = parser.parse_args()
 	
-	model_config = SE3TConfig(num_layers = 2, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 4)
+	model_config = SE3TConfig(num_layers = 2, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 2, num_iter = 4)
 	# torch.autograd.set_detect_anomaly(True)
 		
 	if args.cmd is None:
