@@ -15,6 +15,7 @@ I generated the dataset using the following procedure:
 Finally examples from the dataset look like:
 ![Alt Text](dataset/dataset.png)
 
+
 To generate the data you need to create directories:
 *dataset/train*, *dataset/test*. Then run the script *spatial_dataset.py* with appropriate parameters. 
 
