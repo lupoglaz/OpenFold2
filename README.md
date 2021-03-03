@@ -15,7 +15,6 @@ I generated the dataset using the following procedure:
 Finally examples from the dataset look like:
 ![Alt Text](dataset/dataset.png)
 
-
 To generate the data you need to create directories:
 *dataset/train*, *dataset/test*. Then run the script *spatial_dataset.py* with appropriate parameters. 
 
@@ -28,5 +27,5 @@ No results yet!
 
 epoch | Train | Test
 ------| ----- | -----
-0     | 6.56  | 6.54
-100   | 1.37  | 1.42
+0     | 6.70  | 7.16
+100   | 2.24  | 4.81

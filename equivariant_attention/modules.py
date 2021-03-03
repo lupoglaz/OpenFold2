@@ -572,7 +572,7 @@ class GSE3Res(nn.Module):
 
         # Attention
         self.GMAB['attn'] = GMABSE3(self.f_mid_out, self.f_mid_in, n_heads=n_heads)
-
+        
         # Skip connections
         self.project = G1x1SE3(self.f_mid_out, f_out)
         self.add = GSum(f_out, f_in)

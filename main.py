@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 import torch
 from torch.utils.data import DataLoader
 
-from src.Model import SE3TConfig, SE3TransformerIt
+from src.Model import SE3TConfig, SE3TransformerIt, MSAConfig
 from src.Trainer import Trainer, TrainerConfig
 from src.MSADataset import MSADataset, collate
 
@@ -26,7 +26,8 @@ def train(model_config, train_config, train_dataset):
 			else:
 				print(f'Excluding device: {i}:{torch.cuda.get_device_name(i)}')
 	
-	model = SE3TransformerIt(model_config)
+	msa_config = MSAConfig()
+	model = SE3TransformerIt(model_config, msa_config)
 	trainer = Trainer(model, train_config, device_ids=None)
 
 	train_stream = DataLoader(  train_dataset, shuffle=True, pin_memory=True, 
@@ -45,9 +46,10 @@ def train(model_config, train_config, train_dataset):
 		trainer.save_checkpoint()
 
 def test(model_config, train_config, test_dataset):
-	model = SE3TransformerIt(model_config)
+	msa_config = MSAConfig()
+	model = SE3TransformerIt(model_config, msa_config)
 	trainer = Trainer(model, train_config)
-	# trainer.load_checkpoint()
+	trainer.load_checkpoint()
 
 	test_stream = DataLoader(  test_dataset, shuffle=False, pin_memory=True, 
 								batch_size=train_config.batch_size, 
@@ -68,7 +70,8 @@ if __name__ == '__main__':
 		
 	args = parser.parse_args()
 	
-	model_config = SE3TConfig(num_layers = 2, num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 4)
+	model_config = SE3TConfig(num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 10)
+	
 	# torch.autograd.set_detect_anomaly(True)
 		
 	if args.cmd is None:
