@@ -1,4 +1,6 @@
 # OpenFold2
+![GitHub Logo](docs/Fig/OpenFold2_mid.png)
+
 Attempt at reproduction of AlphaFold2. 
 This repository is an ecxample of dataset-driven model development. First, we generate a dataset, using a procedure that mimics some aspect of the real data.
 Then we develop a model, that tries to learn this particular dataset. 

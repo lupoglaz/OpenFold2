@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta name="description" content="">
+        <meta name="author" content="">
+        <link rel="icon" href="../../../../favicon.ico">
+    
+        <title>OpenFold2</title>
+        <link rel="icon" href="Fig/OpenFold2_small.png" type="image/x-icon">
+    
+        <!-- Bootstrap core CSS -->
+        <link href="https://getbootstrap.com/docs/4.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+        <!-- Custom styles for this template -->
+        <link href="css/tmp.css" rel="stylesheet">
+    
+        <script src="js/highlight.pack.js"></script>
+        <script>hljs.initHighlightingOnLoad();</script>
+
+        <script type="text/x-mathjax-config">
+            MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+        </script>
+        <script type="text/javascript"
+		    src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+	    </script>
+    </head>
+
+  <body>
+
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="https://github.com/lupoglaz/OpenFold2">GitHub</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+  
+          <div class="collapse navbar-collapse" id="navbarsExampleDefault">
+          <ul class="navbar-nav mr-auto">
+              <li class="nav-item">
+                  <a class="nav-link" href="index.html">Home<span class="sr-only">(current)</span></a>
+              </li>
+          </ul>
+          </div>
+      </nav>
+    
+<main role="main" class="container-fluid">
+    <div class="starter-template">
+        <h1>Iterative SE(3) transformer</h1>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-sm">
+                <h2>Introduction</h2>
+                <p>DeepMind mentioned in their presentation that updates in the structural part (<b>Figure 1</b>) of AlphaFold2 were SE(3) equivariant:
+                if inputs of each transformer block are rotated and translated, the outputs are rotated and translated accordingly. 
+                This is an essential property of the model, because it should not depend on the particular orientation of the molecule.
+                In this chapter we design a dataset, that requires SE(3) equivariance of the model in order to generalize to the test set.</p>
+                                
+            </div>
+            <div class="col-sm">
+                <img src="Fig/AlphaFold2_se3part.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 1: And example of one sample from the dataset.</h5>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>Dataset</h2>
+                <p>Because we want to test model equivariance and design iterative architecture, we decided to use particle dynamics dataset for this purpose.
+                    First, we define the interaction potential between N particles and run T timesteps of ordinary Newtonian dynamics (<b>Figure 2</b>). We repeat 
+                    this procedure with different number of particles and time lengths.</p>
+                <p>Afterwards, we slice these simulations into blocks of blocks of 10 timesteps. The inputs to the model are coordinates and velocities
+                    of each particle in the beginning of the block and the targets are the coordinates of the particles at the end of the block.</p>
+
+            </div>
+            <div class="col">
+                <img src="Fig/se3_dataset_anim.gif" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=50%>
+                <h5>Figure 2: And example of one sample from the dataset.</h5>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>SE(3) transformer</h2>
+                Approaching this problem we looked at sevaral papers, that developed SE(3) equivariant models: 
+                <ul>
+                <li>Cormorant : Covariant Molecular Neural Networks <b>[1]</b></li>
+                <li>Tensor field networks: Rotation- and translation-equivariant neural networks for 3D point clouds <b>[2]</b></li>
+                <li>Equivariant Attention Networks <b>[3]</b></li>
+                </ul>
+                <p>The Cormorant networks seemed to fit perfectly for this problem and it also was published before the recent CASP experiment, however 
+                authors noted that the training procedure was unstable after 5-6 layers. Meanwhile according to DeepMind presentation AlphaFold2 has 
+                ~50 layers in the structural part of the model.</p>
+                <p>The tensor field networks and by extention equivariant attention networks did not have the same drawback as Cormorant networks. 
+                    And although equivariant attention networks was published after CASP14 started, it seemed like a natural extention of the tensor field 
+                    networks and we think DeepMind group probably independently discovered this idea.</p>
+                <p>Figure 3 shows the workflow of SE(3) transformer. The key step here is the computation of an equivariant basis consisting of spherical 
+                    harmonics with the radial part. The drawback of this work is that authors assumed that the coordinates of the nodes will stay constant 
+                    during the forward pass of the model and made the basis computation non-differentiable. However this can be easily fixed.
+                </p>
+            </div>
+            <div class="col">
+                <img src="Fig/SE3Transformer.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 3. Schematic workflow of SE(3) transformer.</h5>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>Making SE(3) transformer fully differentiable</h2>
+                <p>When coordinates of nodes are updated we have to recompute spherical harmonics and reform the basis out of them using 
+                Clebsh-Gordan coefficients. Because C-G coefficients do not depend on the coordinates, we focus on the evaluation of 
+                spherical harmonics. In the original implementation of SE(3) transformer they are calculated using recursive formula, 
+                however we think it might result in performance loss or numerical instability later on. </p>
+                The implementations of tensor field networks and by extention SE(3) transformer use the tesseral spherical harmonics:
+                $$Y_{lm}(\theta, \phi) = \begin{cases} \\
+                (-1)^m \sqrt{2} \sqrt{\frac{2l+1}{4\pi}\frac{ (l-|m|)!}{(l+|m|)!}} P_l^{|m|}(cos(\theta)) sin(|m|\phi), &m<0 \\
+                \sqrt{\frac{2l+1}{4\pi}} P_l^{m}(cos(\theta)), &m=0 \\
+                (-1)^m \sqrt{2} \sqrt{\frac{2l+1}{4\pi}\frac{ (l-m)!}{(l+m)!}} P_l^{m}(cos(\theta)) sin(m\phi), &m>0 \\
+                \end{cases}
+                $$
+                where $P^m_l$ is a legendre polynomial and the angles $\theta$ and $\phi$ come from transforming diffence between nodes 
+                coordinates into spherical coordinate system:
+                $$P^m_l(x) = (-1)^m 2^l (1-x^2)^{\frac{m}{2}} \sum_{k=m}^l \frac{k!}{(k-m)!}\left(\begin{array}\\l\\k\end{array}\right)\left(\array{ \frac{l+k-1}{2}\\l}\right)$$
+                <p>We can rewrite tesseral spherical harmonics in the following way:
+                $$Y_{lm}(\theta, \phi) = \sum_{k=m}^{l} B(k,l,m) \left(1-cos^2(\theta)\right)^{\frac{m}{2}} cos^{k-m}(\theta) sin(m\phi)$$
+                where coefficients $B(k,l,m)$ do not depend on the angles $\theta$ and $\phi$ and can be precomputed before training. </p>
+                <p>To compute the harmonics with precomputed coefficients $B$ we compute tensors that depend on the angles, multiply them by the coefficients $B$
+                    and sum over the index $k$ (<b>Figure 4</b>).</p>
+            </div>
+            <div class="col">
+                <br><br><br><br>
+                <img src="Fig/SphericalHarmonics.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 4: Computing sherical harmonics with the precomputed coefficients $B(k,l,m)$.</h5>
+                <br><br>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>Model</h2>
+                <p>Now, with fully differentiable basic building blocks we can finally build a model, that will predict coordinates of particles 10 timesteps 
+                ito the future. However, we have to take into accout that SE(3) transformer deals with vector fields and node coordinates are a set of three
+                scalar fields. Therefor we instead predict displacement of each node compared to the previous iteration of the model.</p>
+                <p><b>Figure 5</b> shows the model architecture. Each transformer block predicts the displacement of the particles, then this displacement 
+                is applied to the coordinates and the procedure is repeated for 4 iterations.</p>
+            </div>
+            <div class="col">
+                <img src="Fig/SE3Model.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 5: Iterative SE(3) transformer model.</h5>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <br><br><br>
+                <h2>Results</h2>
+                After training for 100 epochs we have the following result:
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Train</th>
+                        <th scope="col">Test</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th scope="row">Epoch 0</th>
+                        <td>Mark</td>
+                        <td>Otto</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Epoch 100</th>
+                        <td>Jacob</td>
+                        <td>Thornton</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <br><br><br>
+                  <h2>Citations</h2>
+                    <ul class="list-unstyled">
+                    <li>1. Anderson, Brandon, Truong-Son Hy, and Risi Kondor. "Cormorant: Covariant molecular neural networks." arXiv preprint arXiv:1906.04015 (2019)</li>
+                    <li>2. Thomas, Nathaniel, et al. "Tensor field networks: Rotation-and translation-equivariant neural networks for 3d point clouds." arXiv preprint arXiv:1802.08219 (2018)</li>
+                    <li>3. Fuchs, Fabian B., et al. "SE (3)-transformers: 3D roto-translation equivariant attention networks." arXiv preprint arXiv:2006.10503 (2020) </li>
+                    </ul>
+            </div>
+            <div class="col">
+            </div>
+        </div>
+
+    </div><!-- /.container -->
+</main>
+
+<!-- Bootstrap core JavaScript
+================================================== -->
+<!-- Placed at the end of the document so the pages load faster -->
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+<script>window.jQuery || document.write('<script src="https://getbootstrap.com/docs/4.1/assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
+<script src="https://getbootstrap.com/docs/4.1/assets/js/vendor/popper.min.js"></script>
+<script src="https://getbootstrap.com/docs/4.1/dist/js/bootstrap.min.js"></script>
+</body>
+</html>
