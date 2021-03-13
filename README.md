@@ -23,9 +23,10 @@ The script *main.py* is responsible for launching training and testing.
 
 
 ## Results
-No results yet!
+We trained the model on the dataset of 1000 examples, consisting of up to 8 blocks with each pattern size ranging from 5 to 10 aa, and 10 sequences in MSA.
+The results are:
 
 epoch | Train | Test
 ------| ----- | -----
-0     | 6.70  | 7.16
-100   | 2.24  | 4.81
+0     | 6.90  | 8.36
+100   | 1.98  | 2.98

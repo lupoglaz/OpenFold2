@@ -17,12 +17,11 @@ from .StructureModule import StructureModule
 from TorchProteinLibrary.RMSD import Coords2RMSD
 
 class SE3TConfig:
-	embedding_dim = 32
-	num_layers = 4
+	embedding_dim = 10
 	num_degrees = 3
 	edge_dim = 2
 	div = 1
-	n_heads = 4
+	n_heads = 2
 	num_iter = 4
 
 	def __init__(self, **kwargs):
@@ -34,8 +33,8 @@ class MSAConfig:
 	resid_pdrop = 0.1
 	attn_pdrop = 0.1
 	n_layer = 1
-	n_head = 4 
-	n_embd = 32
+	n_head = 2
+	n_embd = 10
 	vocab_size = 21
 
 
@@ -131,13 +130,17 @@ class MSABlock(nn.Module):
 class GCNBlock(nn.Module):
 	def __init__(self, config, fibers_in, fibers_mid, fibers_out):
 		super().__init__()
-		self.gse3res = GSE3Res(fibers_in, fibers_mid, edge_dim=config.embedding_dim, div=config.div, n_heads=config.n_heads)
-		self.gse3norm = GNormSE3(fibers_mid)
+		self.gse3res1 = GSE3Res(fibers_in, fibers_mid, edge_dim=config.embedding_dim, div=config.div, n_heads=config.n_heads)
+		self.gse3res2 = GSE3Res(fibers_mid, fibers_mid, edge_dim=config.embedding_dim, div=config.div, n_heads=config.n_heads)
+		self.gse3norm1 = GNormSE3(fibers_mid)
+		self.gse3norm2 = GNormSE3(fibers_mid)
 		self.gse3conv = GConvSE3(fibers_mid, fibers_out, self_interaction=True, edge_dim=config.embedding_dim)
 	
 	def forward(self, h, G, r, basis):
-		h = self.gse3res(h, G=G, r=r, basis=basis)
-		h = self.gse3norm(h, G=G, r=r, basis=basis)
+		h = self.gse3res1(h, G=G, r=r, basis=basis)
+		h = self.gse3norm1(h, G=G, r=r, basis=basis)
+		h = self.gse3res2(h, G=G, r=r, basis=basis)
+		h = self.gse3norm2(h, G=G, r=r, basis=basis)
 		h = self.gse3conv(h, G=G, r=r, basis=basis)
 		return h
 
@@ -150,20 +153,27 @@ class SE3TransformerIt(nn.Module):
 		self.msaconfig = msaconfig
 		
 		self.fibers = {'in': Fiber(structure=[(self.se3config.embedding_dim + msaconfig.n_embd, 0), (2, 1)]),
-					   'mid': Fiber(structure=[(32 + msaconfig.n_embd, 0), (16, 1), (4, 2)]),
+					   'mid': Fiber(structure=[(32 + msaconfig.n_embd, 0), (6, 1), (4, 2)]),
 					   'out': Fiber(structure=[(self.se3config.embedding_dim, 0), (2, 1)])}
 
 		self.Gblock, self.Tblock = self._build_gcn(self.fibers, 1)
 		self.sph_har = SphericalHarmonics(max_degree=2*(self.se3config.num_degrees))
 		self.car2sph = Cartesian2Spherical()
 		self.basis = Basis(max_degree=self.se3config.num_degrees)
-		self.embedding = nn.Embedding(21, self.se3config.embedding_dim)
+		
 		self.structure = StructureModule()
 		self.loss = Coords2RMSD()
-
-		self.msa_embedding = nn.Embedding(21, msaconfig.n_embd)
 		self.relu = nn.ReLU()
-		# self.attn = MSAAttention(msaconfig)
+
+		#amino-acid embeddings
+		self.embedding = nn.Embedding(21, self.se3config.embedding_dim)
+		self.msa_embedding = nn.Embedding(21, msaconfig.n_embd)
+		
+		#positional emebeddings
+		self.msa_pos_embedding_x = nn.Embedding(80, msaconfig.n_embd)
+		self.msa_pos_embedding_y = nn.Embedding(10, msaconfig.n_embd)
+		self.x = torch.arange(0, 80, dtype=torch.long).unsqueeze(dim=0).repeat(10,1)	
+		self.y = torch.arange(0, 10, dtype=torch.long).unsqueeze(dim=1).repeat(1,80)
 
 	def _build_gcn(self, fibers, out_dim):
 		# Equivariant layers
@@ -185,8 +195,12 @@ class SE3TransformerIt(nn.Module):
 		src, dst = G.all_edges()
 		G.edata['w'] = G.ndata['f'][src] * G.ndata['f'][dst]
 
-		#MSA embedding
-		msa_emb = self.msa_embedding(msa)
+		#MSA embedding + positional embeddings
+		self.x = self.x.to(device=msa.device)
+		self.y = self.y.to(device=msa.device)
+		pos_emb = self.msa_pos_embedding_x(self.x) + self.msa_pos_embedding_y(self.y)
+		pos_emb = pos_emb.unsqueeze(dim=0)
+		msa_emb = self.msa_embedding(msa) + pos_emb[:,:,:msa.size(2)]
 		
 		for iter in range(self.se3config.num_iter):
 			#Equivariant basis

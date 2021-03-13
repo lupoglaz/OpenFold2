@@ -49,7 +49,7 @@ def test(model_config, train_config, test_dataset):
 	msa_config = MSAConfig()
 	model = SE3TransformerIt(model_config, msa_config)
 	trainer = Trainer(model, train_config)
-	trainer.load_checkpoint()
+	# trainer.load_checkpoint()
 
 	test_stream = DataLoader(  test_dataset, shuffle=False, pin_memory=True, 
 								batch_size=train_config.batch_size, 
@@ -70,7 +70,7 @@ if __name__ == '__main__':
 		
 	args = parser.parse_args()
 	
-	model_config = SE3TConfig(num_degrees = 3, edge_dim = 2, div = 1, n_heads = 4, num_iter = 10)
+	model_config = SE3TConfig(num_iter = 4)
 	
 	# torch.autograd.set_detect_anomaly(True)
 		
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 		
 		test_dataset = MSADataset(Path('dataset/test/list.dat'))
 
-		test_config = TrainerConfig(batch_size=10, num_workers=4, ckpt_path = 'checkpoint.th')
+		test_config = TrainerConfig(batch_size=6, num_workers=4, ckpt_path = 'checkpoint.th')
 
 		test(model_config, test_config, test_dataset)
 
@@ -90,8 +90,8 @@ if __name__ == '__main__':
 		
 		train_dataset = MSADataset(Path('dataset/train/list.dat'))
 
-		train_config = TrainerConfig(max_epochs=100, batch_size=8, learning_rate=6e-3, 
-									lr_decay=False, warmup_tokens=64*20, 
+		train_config = TrainerConfig(max_epochs=100, batch_size=5, learning_rate=6e-3, 
+									lr_decay=False, warmup_tokens=32*20, 
 									final_tokens=2*len(train_dataset)*10, 
 									num_workers=4, ckpt_path = 'checkpoint.th')
 
