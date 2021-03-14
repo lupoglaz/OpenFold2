@@ -14,14 +14,19 @@ Energy is appriximatelly conserved:
 
 ## Replicating
 To generate dataset go to dataset directory and launch:
-*python generate_dataset.py -train*
-*python generate_dataset.py -test*
-It will create two files *data_train.pkl* and *data_test.pkl*.
 
-Then from the root of the repository train for 100 epochs with:
+*python generate_dataset.py -train*
+
+*python generate_dataset.py -test*
+
+It will create two files *data_train.pkl* and *data_test.pkl*. Then from the root of the repository train for 100 epochs with:
+
 *python main.py -train*
+
 Afterwards testing can be launched:
+
 *python main.py -test*
+
 
 ## Results
 The results one should get after 100 epochs:
