@@ -41,7 +41,6 @@ def train(model_config, train_config, train_dataset):
 			losses.append(loss)
 			
 		print(f"Epoch {epoch}, train loss = {np.mean(losses)}")
-
 		trainer.save_checkpoint()
 
 def test(model_config, train_config, test_dataset):
