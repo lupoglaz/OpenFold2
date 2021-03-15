@@ -122,7 +122,7 @@
                 $$
                 where $P^m_l$ is a legendre polynomial and the angles $\theta$ and $\phi$ come from transforming diffence between nodes 
                 coordinates into spherical coordinate system:
-                $$P^m_l(x) = (-1)^m 2^l (1-x^2)^{\frac{m}{2}} \sum_{k=m}^l \frac{k!}{(k-m)!}\left(\begin{array}\\l\\k\end{array}\right)\left(\array{ \frac{l+k-1}{2}\\l}\right)$$
+                $$P^m_l(x) = (-1)^m 2^l (1-x^2)^{\frac{m}{2}} \sum_{k=m}^l \frac{k!}{(k-m)!} x^{k-m} \left(\begin{array}\\l\\k\end{array}\right)\left(\array{ \frac{l+k-1}{2}\\l}\right)$$
                 <p>We can rewrite tesseral spherical harmonics in the following way:
                 $$Y_{lm}(\theta, \phi) = \sum_{k=m}^{l} B(k,l,m) \left(1-cos^2(\theta)\right)^{\frac{m}{2}} cos^{k-m}(\theta) sin(m\phi)$$
                 where coefficients $B(k,l,m)$ do not depend on the angles $\theta$ and $\phi$ and can be precomputed before training. </p>
