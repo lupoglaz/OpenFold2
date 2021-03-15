@@ -15,8 +15,11 @@ I generated the dataset using the following procedure:
 Finally examples from the dataset look like:
 ![Alt Text](dataset/dataset.png)
 
-To generate the data you need to create directories:
-*dataset/train*, *dataset/test*. Then run the script *spatial_dataset.py* with appropriate parameters. 
+To generate the data you need to create directories *dataset/train*, *dataset/test*. 
+
+Then run the script *spatial_dataset.py -name train -size 100* to generate training set with 100 examples. 
+
+The script *spatial_dataset.py -name test -size 30* will generate test set with 30 examples.
 
 ## Training and testing
 The script *main.py* is responsible for launching training and testing.
