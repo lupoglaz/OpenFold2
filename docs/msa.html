@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta name="description" content="">
+        <meta name="author" content="">
+        <link rel="icon" href="../../../../favicon.ico">
+    
+        <title>OpenFold2</title>
+        <link rel="icon" href="Fig/OpenFold2_small.png" type="image/x-icon">
+    
+        <!-- Bootstrap core CSS -->
+        <link href="https://getbootstrap.com/docs/4.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+        <!-- Custom styles for this template -->
+        <link href="css/tmp.css" rel="stylesheet">
+    
+        <script src="js/highlight.pack.js"></script>
+        <script>hljs.initHighlightingOnLoad();</script>
+
+        <script type="text/x-mathjax-config">
+            MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+        </script>
+        <script type="text/javascript"
+		    src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+	    </script>
+    </head>
+
+  <body>
+
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="https://github.com/lupoglaz/OpenFold2">GitHub</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+  
+          <div class="collapse navbar-collapse" id="navbarsExampleDefault">
+          <ul class="navbar-nav mr-auto">
+              <li class="nav-item">
+                  <a class="nav-link" href="index.html">Home<span class="sr-only">(current)</span></a>
+              </li>
+          </ul>
+          </div>
+      </nav>
+    
+<main role="main" class="container-fluid">
+    <div class="starter-template">
+        <h1>MSA</h1>
+    </div>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-sm">
+                <h2>Introduction</h2>
+                <p>Multiple sequence alignment is a key input of AlphaFold2 algorithm. However, the size of the attention matrix 
+                    of the transformer that operates on MSA is $~N^2 M^2$, where $N$ is the sequence length and 
+                    $M$ is the number of sequences in the alignment. This is prohibitively costly even for the DeepMind group.</p>
+                
+                <p>In this chapter, we show how to efficiently incorporate MSA into structure prediction. The key observation is 
+                    that alignment of multiple sequences assumes that they have similar structures. Also, the correlation between 
+                    the mutations in the MSA stems from the proximity of these residues in the protein structure.</p>
+
+            </div>
+            <div class="col-sm">
+                <img src="Fig/AlphaFold2_msapart.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 1: MSA part of AlphaFold2.</h5>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>Dataset</h2>
+                <p>This dataset serves mainly one purpose: to verify that the algorithm can learn structures of proteins from MSA alone.
+                    The sequence, that is served to the structural part is random, while all the information about the arrangement of patters 
+                    is contained in the MSA. Otherwise this dataset closely resembles the one we used in the previous chapter.
+                </p>
+                <p>Similar to the previous dataset, we generate an MSA (<b>Figure 2A</b>), consisting of fragments(Ala) and patterns(Gly). 
+                    Afterwards, we generate displacements of patters 
+                    and insert different amino-acids (R/N) at the beginning of a patterns, that correspond to the displacements.
+                    However in this case each of them are inserted in specific sequence, while the first one remains random.
+                    This way we ensure that all the information about the structure can only be extracted while observing MSA and not 
+                    the first sequence.</p>
+                
+                <p>Then next two setps are the same as in the previous chapter (<b>Figure 2B</b>, <b>Figure 2C</b>). Finally, 
+                    <b>Figure 2D</b> shows samples from the toy MSA dataset. Additionally we increased the size of the dataset
+                    and the length of the sequences to ensure, that the model can not memorize the first random sequences.</p>
+
+            </div>
+            <div class="col">
+                <b>A</b> <img src="Fig/msa_alignment.png" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=80%>
+                <div class="row">
+                    <div class="col-sm">
+                        <b>B</b><img src="Fig/msa_placement.png" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=60%>        
+                    </div>
+                    <div class="col-sm">
+                        <b>C</b><img src="Fig/msa_anim.gif" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=100%>
+                    </div>
+                </div>
+                <b>D</b><img src="Fig/msa_dataset.png" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=50%>
+                <h5>Figure 2: MSA dataset generation steps.</h5>
+            </div>
+            
+        </div>
+        <div class="row">
+            <div class="col-sm">
+                <h2>Model architecture</h2>
+                
+            </div>
+            <div class="col">
+                <br><br><br><br><br><br><br><br>
+                <img src="Fig/ProtRigidBodies.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 3: Rigid bodies representation of a protein.</h5>
+            </div>
+            
+        </div>
+            
+        <div class="row">
+            <div class="col-sm">
+                <br><br><br>
+                <h2>Results</h2>
+                After training for 100 epochs we have the following result:
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Train</th>
+                        <th scope="col">Test</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th scope="row">Epoch 0</th>
+                        <td>6.56</td>
+                        <td>6.54</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Epoch 100</th>
+                        <td>1.37</td>
+                        <td>1.42</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <br><br><br>
+                  <h2>Citations</h2>
+                    <ul class="list-unstyled">
+                    <li>1. <em>Evangelos A. Coutsias, Chaok Seok, and Ken A. Dill. "Using quaternions to calculate RMSD". 
+                        Journal of computational chemistry 25:15 (2004) 1849-1857</em>
+                        (<a href="http://dx.doi.org/10.1002/jcc.20110">link</a>)</li>
+                    </ul>
+            </div>
+            <div class="col">
+            </div>
+        </div>
+
+    </div><!-- /.container -->
+</main>
+
+<!-- Bootstrap core JavaScript
+================================================== -->
+<!-- Placed at the end of the document so the pages load faster -->
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+<script>window.jQuery || document.write('<script src="https://getbootstrap.com/docs/4.1/assets/js/vendor/jquery-slim.min.js"><\/script>')</script>
+<script src="https://getbootstrap.com/docs/4.1/assets/js/vendor/popper.min.js"></script>
+<script src="https://getbootstrap.com/docs/4.1/dist/js/bootstrap.min.js"></script>
+</body>
+</html>

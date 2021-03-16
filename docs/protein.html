@@ -60,7 +60,7 @@
             </div>
             <div class="col-sm">
                 <img src="Fig/AlphaFold2_protpart.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
-                <h5>Figure 1: And example of one sample from the dataset.</h5>
+                <h5>Figure 1: Structural part of AlphaFold2.</h5>
             </div>
             
         </div>
@@ -91,7 +91,7 @@
                     </div>
                 </div>
                 <b>D</b><img src="Fig/prot_dataset.png" class="rounded mx-auto d-block float-center" alt="Dataset sample" width=50%>
-                <h5>Figure 2: And example of one sample from the dataset.</h5>
+                <h5>Figure 2: Protein dataset generation steps.</h5>
             </div>
             
         </div>
@@ -117,7 +117,7 @@
                     where $I$ is an identity matrix.
                 </p>
                 <p>In DeepMind's implementation each amino-acid corresponds to a single rigid body, however exact correspondense is unknown at the moment. 
-                    We chose atoms $N$, $C_\alpha$, $C$ to form a single rigid body in our implementation (<b>Figure 3</b>). 
+                    We chose atoms $C_\alpha$, $C$ (amino-acid $j$), $N$ (amino-acid $j+1$) to form a single rigid body in our implementation (<b>Figure 3</b>). 
                     We place $C_\alpha$ atom at the origin of the reference frame and atoms $N$ and $C$ according to the chemical structure of 
                     the protein backbone. Now, we compute the atomic representation of the protein backbone by multiplying the vectors that belong 
                     to a single rigid body by the corresponding rotation and translate the result with the corresponding translation.
