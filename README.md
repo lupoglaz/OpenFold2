@@ -1,6 +1,9 @@
 # Toy protein transformer
 This example illustrates how to iteratively learn proein structures from sequences.
 
+## Prerequisites
+This branch requires TorchProteinLibrary *dev* branch: https://github.com/lupoglaz/TorchProteinLibrary/tree/dev
+
 ## Data
 I generated the dataset using the following procedure:
 1. Generate a sequence consisting of blocks, each block is assigned to either pattern (alpha helix/beta sheet) or flexible fragments (grey). Additionally in the beginning of each pattern the amino-acid encodes the position of this block relative to the previous one(yellow):
