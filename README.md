@@ -1,6 +1,7 @@
 # Toy MSA transformer
 This example illustrates how to iteratively learn proein structures from sequences.
-
+## Prerequisites
+This branch requires TorchProteinLibrary *dev* branch: https://github.com/lupoglaz/TorchProteinLibrary/tree/dev
 ## Data
 I generated the dataset using the following procedure:
 1. Generate an alignment consisting of blocks (colored), each block is assigned to either pattern (alpha helix/beta sheet) or flexible fragments. Additionally in the beginning of each pattern the amino-acid encodes the position of this block relative to the previous one. Also each block goes to its own sequence number in the alignment. The first sequence does not contain any information about the protein structure:
