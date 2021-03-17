@@ -47,6 +47,7 @@
 <main role="main" class="container-fluid">
     <div class="starter-template">
         <h1>MSA</h1>
+        <a href="https://github.com/lupoglaz/OpenFold2/tree/toy_msa"><h3>Code</h3></a>
     </div>
     <div class="container-fluid">
         <div class="row">
@@ -104,12 +105,24 @@
         <div class="row">
             <div class="col-sm">
                 <h2>Model architecture</h2>
-                
+                <p>
+                <b>Figure 3</b> gives shematic representation of the model architecture. Similar general idea was first published in the 
+                paper "MSA Transformer"[1], where Roshan Rao et al. used unified attention over sequences, coupled with the column attention 
+                to circumvent the whole attention matrix computational cost. However in AlphaFold2 the attention over sequences correspond 
+                to the structure of the protein, therefore we use distance matrix between centers of rigid bodies to compute row attention matrix:
+                $$
+                att_{ij} = \frac{1}{12.0}ReLU\left( 12.0 - |\mathbf{x}_i - \mathbf{x}_j|\right)
+                $$
+                where $\mathbf{x}_i$ are the coordinates of $i$th node after the SE(3) transformer block.
+                </p>
+                <p>Additionally we need two-way communication between structural and MSA parts of the model. We use the output features 
+                    of the MSA transformer block corresponding to the first sequence in the MSA as the node input to the next SE(3) 
+                    transformer block.
+                </p>
             </div>
             <div class="col">
-                <br><br><br><br><br><br><br><br>
-                <img src="Fig/ProtRigidBodies.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
-                <h5>Figure 3: Rigid bodies representation of a protein.</h5>
+                <img src="Fig/MSATransformer.png" class="rounded mx-auto d-block float-center" alt="Training process" width=80%>
+                <h5>Figure 3: MSA transformer model architecture.</h5>
             </div>
             
         </div>
@@ -118,6 +131,10 @@
             <div class="col-sm">
                 <br><br><br>
                 <h2>Results</h2>
+                In this experiment we paid additional attention to the overfitting problem. Our goal here is to check whether the 
+                model can propagate information from the MSA part of the input to the SE(3) part. Therefore we have to make sure, that 
+                the algorithm does not simply memorize random amino-acid sequences that we generated. We incresed the size of the dataset 
+                (1000 examples, sequence length 40-80, num sequences in MSA 10) and decreased the size of the model.
                 After training for 100 epochs we have the following result:
                 <table class="table">
                     <thead>
@@ -130,22 +147,20 @@
                     <tbody>
                       <tr>
                         <th scope="row">Epoch 0</th>
-                        <td>6.56</td>
-                        <td>6.54</td>
+                        <td>6.90</td>
+                        <td>8.36</td>
                       </tr>
                       <tr>
                         <th scope="row">Epoch 100</th>
-                        <td>1.37</td>
-                        <td>1.42</td>
+                        <td>1.98</td>
+                        <td>2.98</td>
                       </tr>
                     </tbody>
                   </table>
                   <br><br><br>
                   <h2>Citations</h2>
                     <ul class="list-unstyled">
-                    <li>1. <em>Evangelos A. Coutsias, Chaok Seok, and Ken A. Dill. "Using quaternions to calculate RMSD". 
-                        Journal of computational chemistry 25:15 (2004) 1849-1857</em>
-                        (<a href="http://dx.doi.org/10.1002/jcc.20110">link</a>)</li>
+                    <li>1. Rao, Roshan, et al. "Msa transformer." bioRxiv (2021).</li>
                     </ul>
             </div>
             <div class="col">
