@@ -45,3 +45,8 @@ def getSeqNumAtoms(seq):
 	for res in seq:
 		num_atoms += getResNumAtoms(res)
 	return num_atoms
+
+def writeMSA(filename, msa):
+	with open(filename, 'wt') as fout:
+		for seq in msa:
+			fout.write(seq+'\n')

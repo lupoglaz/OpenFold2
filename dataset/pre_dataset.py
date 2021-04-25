@@ -17,7 +17,7 @@ from tqdm import tqdm
 import random
 import argparse
 
-from utils import getSeqNumAtoms, getResNumAtoms
+from utils import getSeqNumAtoms, getResNumAtoms, writeMSA
 
 class SeqPatterns:
 	def __init__(self):
@@ -369,10 +369,13 @@ class MSA:
 			E_init = self.E(self.msa)
 			energy.append(E_init.item())
 			new_msa = self.step()
-			E_new = self.E(new_msa)
-			if torch.exp((E_new - E_init)/T) < (1.0 - torch.rand(1)):
-				self.msa = new_msa.clone()
-				acc.append(1)
+			if not(new_msa is None):
+				E_new = self.E(new_msa)
+				if torch.exp((E_new - E_init)/T) < (1.0 - torch.rand(1)):
+					self.msa = new_msa.clone()
+					acc.append(1)
+				else:
+					acc.append(0)
 			else:
 				acc.append(0)
 
@@ -459,8 +462,8 @@ if __name__=='__main__':
 	with open(f'{args.name}/list.dat', 'wt') as fout:
 		for i in tqdm(range(args.size)):
 			seq = Sequence.generate_sequence(SeqPatterns(), 
-									min_num_blocks=5, max_num_blocks=10,
-									block_min_length=5, block_max_length=15)
+									min_num_blocks=1, max_num_blocks=8, 
+									block_min_length=5, block_max_length=10)
 			sequence = seq.get_sequence()
 			
 			struct = Structure(seq, StructPatterns())
@@ -472,8 +475,8 @@ if __name__=='__main__':
 			msa_gen.MCMC(5000)
 			msa = msa_gen.get_msa()
 		
-			prot = a2c(struct.angles, [msa[0]])
+			prot = struct.a2c(struct.angles, [msa[0]])
 			writePDB(f'{args.name}/{i}.pdb', *prot)
-			write_msa(f'{args.name}/{i}.msa', msa)
+			writeMSA(f'{args.name}/{i}.msa', msa)
 			fout.write(f'{i}.pdb\n')
 	
