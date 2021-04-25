@@ -117,7 +117,7 @@ class Patterns:
 		}
 		
 
-	def add_pattern(self, name, length=10):		
+	def add_pattern(self, name, length=10):
 		sequence = ''.join([self.seq_fill[name] for i in range(length)])
 		angles = torch.zeros(1, 8, length, dtype=torch.float, device='cpu')
 		num_repeats = int(length / self.patterns[name].size(-1))
@@ -386,31 +386,31 @@ if __name__=='__main__':
 	a2c = Angles2Coords()
 	ptrn = Patterns()
 	smpl = Sampler(ptrn, min_num_blocks=1, max_num_blocks=8, block_min_length=5, block_max_length=10)
-	# angles, msa = smpl.generate()
-	# smpl.position(visualize=True)
-	# min_angles, min_rmsd = smpl.optimize(angles, [msa[0]], visualize=True)
-	# plot_msa(msa, smpl)
-	# sys.exit()
+	angles, msa = smpl.generate()
+	smpl.position(visualize=True)
+	min_angles, min_rmsd = smpl.optimize(angles, [msa[0]], visualize=True)
+	plot_msa(msa, smpl)
+	sys.exit()
 	
-	fig = plt.figure(figsize=plt.figaspect(0.3))
+	# fig = plt.figure(figsize=plt.figaspect(0.3))
 
-	with open(f'{args.name}/list.dat', 'wt') as fout:
-		for i in tqdm(range(args.size)):
-			angles, msa = smpl.generate()
-			smpl.position(visualize=False)
-			min_angles, min_rmsd = smpl.optimize(angles, [msa[0]], visualize=False)
+	# with open(f'{args.name}/list.dat', 'wt') as fout:
+	# 	for i in tqdm(range(args.size)):
+	# 		angles, msa = smpl.generate()
+	# 		smpl.position(visualize=False)
+	# 		min_angles, min_rmsd = smpl.optimize(angles, [msa[0]], visualize=False)
 			
-			prot = a2c(min_angles, [msa[0]])
-			writePDB(f'{args.name}/{i}.pdb', *prot)
-			write_msa(f'{args.name}/{i}.msa', msa)
-			fout.write(f'{i}.pdb\n')
+	# 		prot = a2c(min_angles, [msa[0]])
+	# 		writePDB(f'{args.name}/{i}.pdb', *prot)
+	# 		write_msa(f'{args.name}/{i}.msa', msa)
+	# 		fout.write(f'{i}.pdb\n')
 
-			if i < 3:
-				ax = fig.add_subplot(1, 3, i+1, projection='3d')
-				prot_ca = ProteinStructure(*prot).select_CA()
-				atoms_plot = prot_ca.plot_coords(axis=ax)
+	# 		if i < 3:
+	# 			ax = fig.add_subplot(1, 3, i+1, projection='3d')
+	# 			prot_ca = ProteinStructure(*prot).select_CA()
+	# 			atoms_plot = prot_ca.plot_coords(axis=ax)
 	
-	plt.savefig("dataset.png")
+	# plt.savefig("dataset.png")
 
 	
 	
