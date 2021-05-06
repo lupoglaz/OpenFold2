@@ -266,4 +266,4 @@ class SE3TransformerIt(nn.Module):
 		if not (target is None):
 			losses = self.loss(structs, target, num_atoms)
 
-		return structs, losses
+		return losses, structs, num_atoms

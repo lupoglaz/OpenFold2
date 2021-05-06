@@ -194,7 +194,7 @@ class Structure:
 		for idx, (name, length) in enumerate(self.seq.blocks):
 			if name == 'rand' or name.find('displ')!=-1: continue
 
-			seq_start, seq_end, msa_idx = seq.get_block_span(idx)
+			seq_start, seq_end, msa_idx = self.seq.get_block_span(idx)
 			prot = self.a2c(self.angles[:,:,seq_start:seq_end], [sequence[seq_start:seq_end]])
 			coords, num_atoms = prot[0], prot[-1]
 			cent = center(coords, num_atoms)
@@ -344,7 +344,7 @@ class MSA:
 			i, j = select_ij()
 			indexes = torch.arange(0, self.contacts.size(0), dtype=torch.long)
 			eq = (self.msa[i,:].unsqueeze(dim=-1) != self.msa[i,:].unsqueeze(dim=-2))
-			pairs = indexes.masked_select(self.contacts[j,:]*eq[j,:])
+			pairs = indexes.masked_select(self.contacts[j,:]*eq[j,:]*self.mask[i,:])
 			if pairs is None or pairs.size(0)==0:
 				continue
 			k = pairs[random.randint(0, pairs.size(0)-1)]
@@ -352,7 +352,7 @@ class MSA:
 			new_msa[i,j] = self.msa[i,k].item()
 			return new_msa
 		
-	def MCMC(self, num_steps, acc_threshold=0.1, T=1.0, visualize=False):
+	def MCMC(self, num_steps, acc_threshold=0.1, T=1.0, visualize=False, seq=None):
 		if visualize:
 			fig = plt.figure(figsize=plt.figaspect(0.3))
 			camera = Camera(fig)
@@ -382,7 +382,7 @@ class MSA:
 			acc_rate.append(np.mean(acc[max(0, len(acc)-acc_t):]))
 			
 			if acc_rate[-1] < acc_threshold and step>acc_t:
-				break
+				return True
 
 			if visualize and step%10==0:
 				plot_msa(ax_msa, self.get_msa(), seq)
@@ -398,6 +398,8 @@ class MSA:
 		if visualize:
 			animation = camera.animate()
 			animation.save("mcmc.mp4")
+		
+		return False
 
 def contacts_example():
 	seq = Sequence.generate_sequence(SeqPatterns(), 
@@ -437,9 +439,8 @@ def mcmc_example():
 	seq = Sequence.generate_sequence(SeqPatterns(), 
 									min_num_blocks=5, max_num_blocks=10,
 									block_min_length=5, block_max_length=15)
-
-	struct = Structure(seq, StructPatterns())
 	sequence = seq.get_sequence()
+	struct = Structure(seq, StructPatterns())
 	struct.position(sequence, visualize=False)
 	struct.optimize(sequence, visualize=False)
 
@@ -447,7 +448,7 @@ def mcmc_example():
 	msa = MSA.generate(seq, cont_opt, 10)
 	
 	msa_init = msa.get_msa()
-	msa.MCMC(5000, visualize=True)
+	msa.MCMC(5000, visualize=True, seq=seq)
 	msa_final = msa.get_msa()
 
 
@@ -458,9 +459,12 @@ if __name__=='__main__':
 	parser.add_argument('-name', default='train', help='Dataset name', type=str)
 	parser.add_argument('-size', default=100, help='Dataset size', type=int)
 	args = parser.parse_args()
+	
+	# mcmc_example()
+	# sys.exit()
 
 	with open(f'{args.name}/list.dat', 'wt') as fout:
-		for i in tqdm(range(args.size)):
+		while i < tqdm(range(args.size)):
 			seq = Sequence.generate_sequence(SeqPatterns(), 
 									min_num_blocks=1, max_num_blocks=8, 
 									block_min_length=5, block_max_length=10)
@@ -472,8 +476,13 @@ if __name__=='__main__':
 			
 			cont_opt = struct.get_contacts(sequence, cutoff=8)
 			msa_gen = MSA.generate(seq, cont_opt, 10)
-			msa_gen.MCMC(5000)
+			converged = msa_gen.MCMC(5000)
+			if not converged:
+				continue
+			else:
+				i += 1
 			msa = msa_gen.get_msa()
+
 		
 			prot = struct.a2c(struct.angles, [msa[0]])
 			writePDB(f'{args.name}/{i}.pdb', *prot)

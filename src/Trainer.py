@@ -62,7 +62,7 @@ class Trainer:
 		y = y.to(self.device)
 
 
-		logits, loss = self.model(msa, x, y)
+		loss, struct, num_atoms = self.model(msa, x, y)
 		loss = loss.mean()
 		self.model.zero_grad()
 		loss.backward()
@@ -84,12 +84,14 @@ class Trainer:
 		
 		return loss.item()
 	
-	def test(self, x, y):
+	def test(self, msa, x, y):
 		self.model.eval()
 		x = x.to(self.device)
 		y = y.to(self.device)
+		msa = msa.to(self.device)
 
 
-		logits, loss = self.model(x, y)
-		return loss.mean()
+		loss, struct, num_atoms = self.model(msa, x, y)
+			
+		return loss.mean(), struct, num_atoms
 	
