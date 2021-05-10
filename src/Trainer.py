@@ -55,14 +55,15 @@ class Trainer:
 		checkpoint = torch.load(self.config.ckpt_path)
 		raw_model.load_state_dict(checkpoint)
 
-	def step(self, msa, x, y):
+	def step(self, msa, x, y, sec, num_sec):
 		self.model.train()
 		msa = msa.to(self.device)
 		x = x.to(self.device)
 		y = y.to(self.device)
+		sec = sec.to(self.device)
 
 
-		loss, struct, num_atoms = self.model(msa, x, y)
+		loss, struct, num_atoms = self.model(msa, x, y, sec, num_sec)
 		loss = loss.mean()
 		self.model.zero_grad()
 		loss.backward()

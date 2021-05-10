@@ -189,6 +189,7 @@ class Structure:
 		self.target_num_atoms = torch.zeros(1, dtype=torch.int, device='cpu')
 		self.target_mask = torch.zeros(1, getSeqNumAtoms(sequence), 3, dtype=torch.bool, device='cpu')
 		self.grad_mask = torch.zeros(1, 8, len(sequence), dtype=torch.bool, device='cpu')
+		self.secondary = []
 		
 		num_frags = 0
 		for idx, (name, length) in enumerate(self.seq.blocks):
@@ -214,6 +215,10 @@ class Structure:
 			self.target_mask[0, atom_start:atom_end, :] = True
 			self.grad_mask[0,:, seq_start:seq_end] = True
 
+			secondary = torch.zeros(1, getSeqNumAtoms(sequence), 3, dtype=torch.bool, device='cpu')
+			secondary[0, atom_start:atom_end, :] = True
+			self.secondary.append(secondary.clone())
+			
 			T = T + self.patterns.displacement[self.seq.get_block_displ(idx)]
 
 			num_frags += 1
@@ -227,6 +232,7 @@ class Structure:
 			plt.show()
 
 		self.target_coords = torch.cat(self.target_coords, dim=1)
+		self.secondary = torch.cat(self.secondary, dim=0)
 
 	def optimize(self, sequence, visualize=False):
 		rmsd = Coords2RMSD()
@@ -458,34 +464,46 @@ if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-name', default='train', help='Dataset name', type=str)
 	parser.add_argument('-size', default=100, help='Dataset size', type=int)
+	parser.add_argument('-mcmc', default=True, help='MCMC optimize', type=bool)
+	parser.add_argument('-secondary', default=False, help='Include secondary structure regions', type=bool)
 	args = parser.parse_args()
 	
 	# mcmc_example()
 	# sys.exit()
 
 	with open(f'{args.name}/list.dat', 'wt') as fout:
-		while i < tqdm(range(args.size)):
-			seq = Sequence.generate_sequence(SeqPatterns(), 
-									min_num_blocks=1, max_num_blocks=8, 
-									block_min_length=5, block_max_length=10)
-			sequence = seq.get_sequence()
-			
-			struct = Structure(seq, StructPatterns())
-			struct.position(sequence)
-			struct.optimize(sequence)
-			
-			cont_opt = struct.get_contacts(sequence, cutoff=8)
-			msa_gen = MSA.generate(seq, cont_opt, 10)
-			converged = msa_gen.MCMC(5000)
-			if not converged:
-				continue
-			else:
-				i += 1
-			msa = msa_gen.get_msa()
+		i = 0
+		with tqdm(total=args.size) as pbar:
+			while i < args.size:
+				seq = Sequence.generate_sequence(SeqPatterns(), 
+										min_num_blocks=1, max_num_blocks=8, 
+										block_min_length=5, block_max_length=10)
+				sequence = seq.get_sequence()
+				
+				struct = Structure(seq, StructPatterns())
+				struct.position(sequence)
+				struct.optimize(sequence)
+				
+				cont_opt = struct.get_contacts(sequence, cutoff=8)
+				msa_gen = MSA.generate(seq, cont_opt, 10)
+				if args.mcmc:
+					converged = msa_gen.MCMC(5000)
+					if not converged:
+						continue
+					else:
+						i += 1
+						pbar.update(1)
+				else:
+					i += 1
+					pbar.update(1)
+				msa = msa_gen.get_msa()
 
-		
-			prot = struct.a2c(struct.angles, [msa[0]])
-			writePDB(f'{args.name}/{i}.pdb', *prot)
-			writeMSA(f'{args.name}/{i}.msa', msa)
-			fout.write(f'{i}.pdb\n')
+			
+				prot = struct.a2c(struct.angles, [msa[0]])
+				writePDB(f'{args.name}/{i}.pdb', *prot)
+				writeMSA(f'{args.name}/{i}.msa', msa)
+				if args.secondary:
+					with open(f'{args.name}/{i}.th', 'wb') as fsec:
+						torch.save(struct.secondary, fsec)
+				fout.write(f'{i}.pdb\n')
 	

@@ -82,8 +82,8 @@ def train(model_config, train_config, train_dataset, log_name=Path('log_train.tx
 
 	for epoch in range(train_config.max_epochs):
 		losses = []
-		for msa, x, y in tqdm(train_stream):
-			loss = trainer.step(msa, x, y)
+		for msa, x, y, sec, num_sec in tqdm(train_stream):
+			loss = trainer.step(msa, x, y, sec, num_sec)
 			losses.append(loss)
 			
 		print(f"Epoch {epoch}, train loss = {np.mean(losses)}")
@@ -104,7 +104,7 @@ def test(model_config, train_config, test_dataset):
 								num_workers=train_config.num_workers,
 								collate_fn=collate)
 	losses = []
-	for msa, x,y in tqdm(test_stream):
+	for msa, x, y, sec, num_sec in tqdm(test_stream):
 		with torch.no_grad():
 			loss, prot, num_atoms = trainer.test(msa, x, y)
 		losses.append(loss.item())

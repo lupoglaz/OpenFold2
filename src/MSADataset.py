@@ -22,7 +22,7 @@ def _tensor2str(tensor):
 	return (tensor.numpy().astype(dtype=np.uint8).tobytes().split(b'\00')[0]).decode("utf-8")
 
 def collate(samples):
-	input_msa, input_prot, target_batch = map(list, zip(*samples))
+	input_msa, input_prot, target_batch, secondary = map(list, zip(*samples))
 	input_graph = dgl.batch(input_prot)
 	
 	max_M = max(map(lambda x: x.size(0), input_msa))
@@ -30,6 +30,15 @@ def collate(samples):
 	collate_msa = torch.zeros(len(input_msa), max_M, max_N, dtype=torch.long)
 	for i, msa in enumerate(input_msa):
 		collate_msa[i,:msa.size(0),:msa.size(1)] = msa
+
+	max_M = max(map(lambda x: x.size(0), secondary))
+	max_N = max(map(lambda x: x.size(1), secondary))
+	collate_secondary = torch.zeros(len(secondary), max_M, max_N, dtype=torch.bool)
+	num_secondary = torch.zeros(len(secondary), dtype=torch.int)
+	for i, sec in enumerate(secondary):
+		collate_secondary[i,:sec.size(0),:sec.size(1)] = sec
+		num_secondary[i] = sec.size(0)
+
 
 	max_size = max([tgt.size(1) for tgt in target_batch])
 	target_tensor = []
@@ -40,13 +49,14 @@ def collate(samples):
 		else:
 			target_tensor.append(tgt)
 	target_coords = torch.cat(target_tensor, dim=0)
-	return collate_msa, input_graph, target_coords
+	return collate_msa, input_graph, target_coords, collate_secondary, num_secondary
 
 class MSADataset(Dataset):
 	num_bonds = 2
 	def __init__(self, list_path):
 		self.data = []
 		self.msa = []
+		self.secondary = []
 		dir_path = list_path.parents[0]
 		with open(list_path, 'rt') as fin:
 			for line in fin:
@@ -55,6 +65,7 @@ class MSADataset(Dataset):
 					break
 				self.data.append( dir_path.joinpath(Path(sline[0])).as_posix() ) 
 				self.msa.append( dir_path.joinpath(Path(sline[0]).with_suffix('.msa')).as_posix() )
+				self.secondary.append(dir_path.joinpath(Path(sline[0]).with_suffix('.th')).as_posix())
 		
 		self.data_size = len(self.data)
 		self.p2c = PDB2CoordsUnordered()
@@ -67,6 +78,11 @@ class MSADataset(Dataset):
 
 		print(f'Data: {self.data_size} proteins')
 	
+	def load_secondary(self, path):
+		with open(path, 'rb') as fin:
+			secondary = torch.load(fin)
+		return secondary.view(secondary.size(0), secondary.size(1)*3)
+
 	def load_msa(self, path):
 		msa = []
 		with open(path, 'rt') as fin:
@@ -113,6 +129,7 @@ class MSADataset(Dataset):
 	def __getitem__(self, idx):
 		#MSA
 		msa = self.load_msa(self.msa[idx])
+		secondary = self.load_secondary(self.secondary[idx])
 		
 		#Target conformation
 		prot_tgt = self.p2c([self.data[idx]])
@@ -138,7 +155,7 @@ class MSADataset(Dataset):
 		G.edata['d'] = (x_init[dst] - x_init[src]).to(torch.float32)
 		G.edata['w'] = (torch.from_numpy(w)).to(torch.float32).unsqueeze(dim=-1)
 		
-		return msa, G, prot_tgt_bkb.coords.to(dtype=torch.float32)
+		return msa, G, prot_tgt_bkb.coords.to(dtype=torch.float32), secondary
 
 	def __len__(self):
 		return self.data_size
@@ -151,8 +168,22 @@ if __name__=='__main__':
 	stream = DataLoader(dataset, shuffle=True, pin_memory=True, 
 						batch_size=4, num_workers=0, collate_fn=collate)
 
-	for MSA_inp, G_inp, G_tgt in stream:
+	for MSA_inp, G_inp, G_tgt, secondary, num_secondary in stream:
 		print(MSA_inp)
 		print(G_inp)
 		print(G_tgt)
+		print(secondary)
+		print(num_secondary)
 		break
+
+	batch_idx = 1
+	for sec_idx in range(num_secondary[batch_idx].item()):
+		sec = secondary[batch_idx, sec_idx, :]
+		sec = sec.view(int(sec.size(0)/3), 3)
+		str = ''
+		for k in range(sec.size(0)):
+			if sec[k,0]:
+				str += '1'
+			else:
+				str += '0'
+		print(str)
