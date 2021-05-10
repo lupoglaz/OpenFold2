@@ -252,7 +252,7 @@ class SE3TransformerIt(nn.Module):
 		num_atoms = torch.zeros(batch_size, dtype=torch.int, device=G.ndata['r'].device)
 		max_num_atoms = 3*max_num_res
 		structs = []
-		sec_loss = None
+		sec_loss = []
 		for i, g in enumerate(dgl.unbatch(G)):
 			num_res = g.ndata['r'].size(0)
 			num_atoms[i] = 3*num_res
@@ -261,14 +261,11 @@ class SE3TransformerIt(nn.Module):
 			if not (sec is None):
 				for sec_idx in range(num_sec[i]):
 					sec_mask = sec[i, sec_idx, :]
-					num_sec_atoms = torch.sum(sec[i, sec_idx, :].to(dtype=torch.int))/3
-					num_sec_atoms = num_sec_atoms.to(device='cuda')
+					num_sec_atoms = torch.sum(sec[i, sec_idx, :].to(dtype=torch.int))//3
+					num_sec_atoms = num_sec_atoms.to(device='cuda', dtype=torch.int).unsqueeze(dim=0)
 					target_sec = target[i,:].masked_select(sec_mask)
 					pred_sec = struct.masked_select(sec_mask[:num_atoms[i].item()*3])
-					if sec_loss is None:
-						sec_loss = self.loss(pred_sec, target_sec, num_sec_atoms)
-					else:
-						sec_loss += self.loss(pred_sec, target_sec, num_sec_atoms)
+					sec_loss.append(self.loss(pred_sec.unsqueeze(dim=0), target_sec.unsqueeze(dim=0), num_sec_atoms))
 
 			if num_atoms[i].item() < max_num_atoms:
 				struct = torch.cat([struct, torch.zeros(1, (max_num_atoms-num_atoms[i].item())*3, dtype=struct.dtype, device=struct.device) ], dim=1)
@@ -279,7 +276,8 @@ class SE3TransformerIt(nn.Module):
 		loss = None
 		if not (target is None):
 			losses = self.loss(structs, target, num_atoms) 
-		if not (sec_loss is None):
-			losses = losses + sec_loss
+		if len(sec_loss)>0:
+			sec_loss = torch.cat(sec_loss, dim=0)
+			losses = losses + torch.mean(sec_loss)
 
 		return losses, structs, num_atoms

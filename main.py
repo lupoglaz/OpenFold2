@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
 	elif args.cmd() == 'test':
 		
-		test_dataset = MSADataset(Path('dataset/test_pre/list.dat'))
+		test_dataset = MSADataset(Path('dataset/test/list.dat'))
 
 		test_config = TrainerConfig(batch_size=6, num_workers=4, ckpt_path = 'checkpoint.th')
 
@@ -153,7 +153,7 @@ if __name__ == '__main__':
 
 	elif args.cmd() == 'train':
 		
-		train_dataset = MSADataset(Path('dataset/train_pre/list.dat'))
+		train_dataset = MSADataset(Path('dataset/train/list.dat'))
 
 		train_config = TrainerConfig(max_epochs=300, batch_size=5, learning_rate=6e-3, 
 									lr_decay=False, warmup_tokens=32*20, 

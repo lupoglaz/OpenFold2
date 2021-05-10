@@ -215,8 +215,8 @@ class Structure:
 			self.target_mask[0, atom_start:atom_end, :] = True
 			self.grad_mask[0,:, seq_start:seq_end] = True
 
-			secondary = torch.zeros(1, getSeqNumAtoms(sequence), 3, dtype=torch.bool, device='cpu')
-			secondary[0, atom_start:atom_end, :] = True
+			secondary = torch.zeros(1, len(sequence)*3, 3, dtype=torch.bool, device='cpu')
+			secondary[0, seq_start*3:seq_end*3, :] = True
 			self.secondary.append(secondary.clone())
 			
 			T = T + self.patterns.displacement[self.seq.get_block_displ(idx)]
