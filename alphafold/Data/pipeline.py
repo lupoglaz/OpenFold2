@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Mapping, Sequence, Any, Optional
 from alphafold.Data.Tools import HHSearch, HHBlits, Jackhammer
 from alphafold.Data import parsers
+from alphafold.Common import residues_constants
 import numpy as np
 
 FeatureDict = Mapping[str, np.ndarray]
@@ -53,10 +54,39 @@ class DataPipeline:
 		self.uniref_max_hits = uniref_max_hits
 
 	def make_sequence_features(self, sequence: str, description: str, num_res: int) ->FeatureDict:
-		pass
+		return {
+			'aatype': residues_constants.sequence_to_onehot(sequence=sequence, mapping=residues_constants.restype_order_with_x, map_unknown_to_x=True),
+			'between_segment_residues': np.zeros((num_res, ), dtype=np.int32),
+			'domain_name': np.array([description.encode('utf-8')], dtype=np.object_),
+			'residue_index': np.array(range(num_res), dtype=np.int32),
+			'seq_length': np.array([num_res]*num_res, dtype=np.int32),
+			'sequence': np.array([sequence.encode('utf-8')], dtype=np.object_)
+		}
+		
 
 	def make_msa_features(self, msas: Sequence[Sequence[str]], deletion_matrices: Sequence[parsers.DeletionMatrix]) -> FeatureDict:
-		pass
+		if not msas:
+			raise ValueError('DataPipeline: At least one msa is required')
+		int_msa = []
+		deletion_matrix = []
+		seen_sequences = set()
+		for msa_index, msa in enumerate(msas):
+			if not msa:
+				raise ValueError(f'DataPipeline: msas index {msa_index} is empty')
+			for sequence_index, sequence in enumerate(msa):
+				if sequence in seen_sequences:
+					continue
+				seen_sequences.add(sequence)
+				int_msa.append([residues_constants.HHBLITS_AA_TO_ID[res] for res in sequence])
+				deletion_matrix.append(deletion_matrices[msa_index][sequence_index])
+		num_res = len(msas[0][0])
+		num_alignments = len(int_msa)
+		return {
+			'deletion_matrix_int': np.array(deletion_matrix, dtype=np.int32),
+			'msa': np.array(int_msa, dtype=np.int32),
+			'num_alignments': np.array([num_alignments]*num_res, dtype=np.int32)
+		}
+
 
 	def process(self, input_fasta_path: Path, msa_ouput_dir: Path) -> FeatureDict:
 		with open(input_fasta_path) as f:
@@ -71,8 +101,8 @@ class DataPipeline:
 		jackhmmer_uniref90_result = self.jackhmmer_uniref90_runner.query(input_fasta_path)[0]
 		jackhmmer_mgnify_result = self.jackhmmer_mgnify_runner.query(input_fasta_path)[0]
 
-		uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(jackhmmer_uniref90_result['sto'], max_sequences=self.uniref_max_hits)
-		hhsearch_result = self.hhsearch_pdb70_runner.query(uniref90_msa_as_a3m)
+		# uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(jackhmmer_uniref90_result['sto'], max_sequences=self.uniref_max_hits)
+		# hhsearch_result = self.hhsearch_pdb70_runner.query(uniref90_msa_as_a3m)
 
 		uniref90_out_path = msa_ouput_dir / Path('uniref90_hits.sto')
 		with open(uniref90_out_path, 'w') as f:
@@ -82,13 +112,13 @@ class DataPipeline:
 		with open(mgnify_out_path, 'w') as f:
 			f.write(jackhmmer_mgnify_result['sto'])
 
-		pdb70_out_path = msa_ouput_dir / Path('pdb70_hits.sto')
-		with open(pdb70_out_path, 'w') as f:
-			f.write(hhsearch_result)
+		# pdb70_out_path = msa_ouput_dir / Path('pdb70_hits.sto')
+		# with open(pdb70_out_path, 'w') as f:
+		# 	f.write(hhsearch_result)
 
 		uniref90_msa, uniref90_deletion_matrix, _ = parsers.parse_stockholm(jackhmmer_uniref90_result['sto'])
 		mgnify_msa, mgnify_deletion_matrix, _ = parsers.parse_stockholm(jackhmmer_mgnify_result['sto'])
-		hhsearch_hits = parsers.parse_hhr(hhsearch_result)
+		# hhsearch_hits = parsers.parse_hhr(hhsearch_result)
 		mgnify_msa = mgnify_msa[:self.mgnify_max_hits]
 		mgnify_deletion_matrix = mgnify_deletion_matrix[:self.mgnify_max_hits]
 
