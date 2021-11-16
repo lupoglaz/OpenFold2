@@ -36,13 +36,13 @@ class Kalign:
 				'-format', 'fasta'
 			]
 		
-			print(f'Launching subprocess {''.join(cmd)}')
+			print(f"Launching subprocess {''.join(cmd)}")
 			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			with utils.timing(f'Kalign query'):
 				stdout, stderr = process.communicate()
 				retcode = process.wait()
 			if retcode:
-				raise RuntimeError(f'Kalign failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}')
+				raise RuntimeError(f"Kalign failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}")
 			
 			with open(output_a3m_path) as f:
 				a3m = f.read()

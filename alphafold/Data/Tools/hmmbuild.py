@@ -26,13 +26,13 @@ class HMMBuild:
 				cmd += ['--singlemx']
 			cmd += ['--amino', output_hmm_path.as_posix(), input_query.as_posix()]
 
-			print(f'Launching subprocess {''.join(cmd)}')
+			print(f"Launching subprocess {''.join(cmd)}")
 			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			with utils.timing(f'HMMBuild query'):
 				stdout, stderr = process.communicate()
 				retcode = process.wait()
 			if retcode:
-				raise RuntimeError(f'HMMBuild failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}')
+				raise RuntimeError(f"HMMBuild failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}")
 			with open(output_hmm_path, encoding='utf-8') as f:
 				hmm = f.read()
 		return hmm

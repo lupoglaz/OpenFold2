@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 from typing import List, Mapping, Tuple
+from alphafold.Data.pipeline import FeatureDict
 import ml_collections
 import numpy as np
 import copy
@@ -11,6 +12,8 @@ NUM_SEQ = "length msa placeholder"
 NUM_TEMPLATES = "num templates placeholder"
 
 ATOM_TYPE_NUM = 37
+
+from alphafold.Model import data_transforms as transf
 
 
 class AlphaFoldFeatures(nn.Module):
@@ -52,7 +55,7 @@ class AlphaFoldFeatures(nn.Module):
 
 		return cfg, feature_names
 
-	def np_to_tensor_dict(self, np_example, features):
+	def np_to_tensor_dict(self, np_example: FeatureDict, features: ml_collections.ConfigDict) -> FeatureDict:
 		#Features dictionary to tensor
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/proteins_dataset.py#L145
 		
@@ -65,12 +68,12 @@ class AlphaFoldFeatures(nn.Module):
 			if k == 'domain_name':
 				tensor_dict[k] = v
 				continue
-			if v.dtype == np.object:
+			if v.dtype == np.object_:
 				tensor_dict[k] = torch.from_numpy(np.fromstring(v))
 			else:
 				tensor_dict[k] = torch.from_numpy(v)
 
-			print(k, tensor_dict[k].size())
+			# print(k, tensor_dict[k].size())
 
 		#Reshaping tensors
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/proteins_dataset.py#L57
@@ -78,7 +81,7 @@ class AlphaFoldFeatures(nn.Module):
 
 		return tensor_dict
 
-	def forward(self, raw_features, random_seed):
+	def forward(self, raw_features: FeatureDict, random_seed: int=0) -> FeatureDict:
 		#Processing features
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/model.py#L88
 		#features.np_example_to_features
@@ -95,5 +98,5 @@ class AlphaFoldFeatures(nn.Module):
 
 		#Process tensors to get model input
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/input_pipeline.py#L125
-		processed_batch = input_pipeline.process_tensors_from_config(tensor_dict, cfg)
-		
+		# processed_batch = input_pipeline.process_tensors_from_config(tensor_dict, cfg)
+		tensor_dict = transf.correct_msa_restypes(tensor_dict)

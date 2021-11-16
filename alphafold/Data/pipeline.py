@@ -41,10 +41,6 @@ class DataPipeline:
 			binary_path = jackhammer_binary_path,
 			database_path = mgnify_database_path
 		)
-		self.jackhmmer_pdb70_runner = Jackhammer(
-			binary_path = jackhammer_binary_path,
-			database_path = pdb70_database_path
-		)
 		self.hhsearch_pdb70_runner = HHSearch(
 			binary_path = hhsearch_binary_path,
 			databases = [pdb70_database_path]
@@ -88,7 +84,7 @@ class DataPipeline:
 		}
 
 
-	def process(self, input_fasta_path: Path, msa_ouput_dir: Path) -> FeatureDict:
+	def process(self, input_fasta_path: Path, msa_output_dir: Path) -> FeatureDict:
 		with open(input_fasta_path) as f:
 			input_fasta_str = f.read()
 		input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
@@ -104,15 +100,15 @@ class DataPipeline:
 		# uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(jackhmmer_uniref90_result['sto'], max_sequences=self.uniref_max_hits)
 		# hhsearch_result = self.hhsearch_pdb70_runner.query(uniref90_msa_as_a3m)
 
-		uniref90_out_path = msa_ouput_dir / Path('uniref90_hits.sto')
+		uniref90_out_path = msa_output_dir / Path('uniref90_hits.sto')
 		with open(uniref90_out_path, 'w') as f:
 			f.write(jackhmmer_uniref90_result['sto'])
 
-		mgnify_out_path = msa_ouput_dir / Path('mgnify_hits.sto')
+		mgnify_out_path = msa_output_dir / Path('mgnify_hits.sto')
 		with open(mgnify_out_path, 'w') as f:
 			f.write(jackhmmer_mgnify_result['sto'])
 
-		# pdb70_out_path = msa_ouput_dir / Path('pdb70_hits.sto')
+		# pdb70_out_path = msa_output_dir / Path('pdb70_hits.sto')
 		# with open(pdb70_out_path, 'w') as f:
 		# 	f.write(hhsearch_result)
 
@@ -125,7 +121,7 @@ class DataPipeline:
 		if self._use_small_bfd:
 			jackhmmer_small_bfd_results = self.jackhmmer_small_bfd_runner.query(input_fasta_path)[0]
 		
-			bfd_out_path = msa_ouput_dir / Path('small_bfd_hits.sto')
+			bfd_out_path = msa_output_dir / Path('small_bfd_hits.sto')
 			with open(bfd_out_path, 'w') as f:
 				f.write(jackhmmer_small_bfd_results['sto'])
 			
@@ -136,5 +132,29 @@ class DataPipeline:
 		sequence_features = self.make_sequence_features(sequence=input_sequence, description=input_description, num_res=num_res)
 		msa_features = self.make_msa_features(msas=(uniref90_msa, bfd_msa, mgnify_msa),
 											deletion_matrices=(uniref90_deletion_matrix, bfd_deletion_matrix, mgnify_deletion_matrix))
+		
+		return {**sequence_features, **msa_features}
+
+	def fast(self, input_fasta_path: Path, msa_output_dir: Path) -> FeatureDict:
+		with open(input_fasta_path) as f:
+			input_fasta_str = f.read()
+		input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
+		if len(input_seqs) != 1:
+			raise ValueError(f'DataPipeline: more than one sequence found {input_fasta_path}')
+		input_sequence = input_seqs[0]
+		input_description = input_descs[0]
+		num_res = len(input_sequence)
+
+		jackhmmer_small_bfd_results = self.jackhmmer_small_bfd_runner.query(input_fasta_path)[0]
+		
+		bfd_out_path = msa_output_dir / Path('small_bfd_hits.sto')
+		with open(bfd_out_path, 'w') as f:
+			f.write(jackhmmer_small_bfd_results['sto'])
+		
+		bfd_msa, bfd_deletion_matrix, _ = parsers.parse_stockholm(jackhmmer_small_bfd_results['sto'])
+		
+		sequence_features = self.make_sequence_features(sequence=input_sequence, description=input_description, num_res=num_res)
+		msa_features = self.make_msa_features(msas=(bfd_msa),
+											deletion_matrices=(bfd_deletion_matrix))
 		return {**sequence_features, **msa_features}
 

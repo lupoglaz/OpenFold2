@@ -1,6 +1,6 @@
 from pathlib import Path
 from alphafold.Data.Tools import utils
-from typing import Optional
+from typing import Optional, Sequence
 
 class HMMSearch:
 	def __init__(self,
@@ -39,13 +39,13 @@ class HMMSearch:
 				self.database_path
 			]
 
-			print(f'Launching subprocess {''.join(cmd)}')
+			print(f"Launching subprocess {''.join(cmd)}")
 			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			with utils.timing(f'HMMSearch query'):
 				stdout, stderr = process.communicate()
 				retcode = process.wait()
 			if retcode:
-				raise RuntimeError(f'HMMSearch failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}')
+				raise RuntimeError(f"HMMSearch failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr.decode('utf-8')}")
 			
 			with open(output_a3m_path) as f:
 				a3m = f.read()

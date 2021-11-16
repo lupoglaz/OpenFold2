@@ -17,8 +17,8 @@ class HHBlits:
 				min_prefilter_hits: int=1000,
 				all_seqs: bool=False,
 				alt: Optional[int]=None,
-				p: int=HHBlits._DEFAULT_P,
-				z: int=HHBlits._DEFAULT_Z):
+				p: int=_DEFAULT_P,
+				z: int=_DEFAULT_Z):
 		self.binary_path = binary_path
 		self.databases = databases
 		for database_path in self.databases:
@@ -38,7 +38,7 @@ class HHBlits:
 		self.p = p 
 		self.z = z 
 
-	def query(self, input_fasta_path: path) -> Mapping[str, Any]:
+	def query(self, input_fasta_path: Path) -> Mapping[str, Any]:
 		with utils.tmpdir_manager() as query_tmp_dir:
 			a3m_path = query_tmp_dir / Path('output.a3m')
 			
@@ -69,13 +69,13 @@ class HHBlits:
 				cmd += ['-Z', str(self.z)]
 			cmd += db_cmd
 
-			print(f'Launching subprocess {''.join(cmd)}')
+			print(f'Launching subprocess {"".join(cmd)}')
 			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			with utils.timing(f'HHBlits query'):
 				stdout, stderr = process.communicate()
 				retcode = process.wait()
 			if retcode:
-				raise RuntimeError(f'HHBlits failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr[:500000].decode('utf-8')}')
+				raise RuntimeError(f"HHBlits failed:\nstdout:\n{stdout.decode('utf-8')}\nstderr:\n{stderr[:500000].decode('utf-8')}")
 			
 			with open(a3m_path) as f:
 				a3m = f.read()

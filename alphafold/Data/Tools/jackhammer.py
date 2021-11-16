@@ -27,6 +27,8 @@ class Jackhammer:
 		self.get_tblout = get_tblout
 		self.dom_e = dom_e
 		self.incdom_e = incdom_e
+		self.num_streamed_chunks = num_streamed_chunks
+		self.streaming_callback = streaming_callback
 
 	def _query_chunk(self, input_fasta_path:Path, database_path:Path) -> Mapping[str, Any]:
 		with utils.tmpdir_manager() as query_tmp_dir:
@@ -58,13 +60,13 @@ class Jackhammer:
 				cmdflags.extend(['--incdomE', str(self.incdom_e)])
 
 			cmd = [self.binary_path.as_posix()] + cmd_flags + [input_fasta_path.as_posix(), database_path.as_posix()]
-			print(f'Launching subprocess {''.join(cmd)}')
+			print(f"Launching subprocess {''.join(cmd)}")
 			process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			with utils.timing(f'Jackhammer {database_path.name} query'):
 				_, stderr = process.communicate()
 				retcode = process.wait()
 			if retcode:
-				raise RuntimeError(f'Jackhammer failed: {stderr.decode('utf-8')}')
+				raise RuntimeError(f"Jackhammer failed: {stderr.decode('utf-8')}")
 			
 			tbl=''
 			if self.get_tblout:

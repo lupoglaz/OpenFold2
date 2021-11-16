@@ -1,7 +1,7 @@
 import collections
 import dataclasses
 import re
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, List, Optional
 
 DeletionMatrix = Sequence[Sequence[int]]
 
@@ -98,7 +98,7 @@ def parse_hhr(hhr_string:str) -> Sequence[TemplateHit]:
 		)
 		match = re.match(pattern, detailed_lines[2])
 		if match is None:
-			raise RuntimeError(f'Cant parse section {detailed_lines}.Unexpected: {detailed_lines[2]}}')
+			raise RuntimeError(f'Cant parse section {detailed_lines}.Unexpected: {detailed_lines[2]}')
 		(prob_true, e_value, _, aligned_cols, _, _, sum_probs, neff) = [float(x) for x in match.groups()]
 
 		query = ''
