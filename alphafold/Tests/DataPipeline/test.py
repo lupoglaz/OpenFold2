@@ -18,19 +18,25 @@ if __name__ == '__main__':
 	
 	model_config = model_config(args.model_name)
 	model_config.data.eval.num_ensemble = 1
+	model_config.data.common.use_templates = False
 	af2features = AlphaFoldFeatures(config=model_config)
 
 	features_path = Path(args.output_dir)/Path('T1024')/Path('features.pkl')
 	proc_features_path = Path(args.output_dir)/Path('T1024')/Path('proc_features.pkl')
 	with open(features_path, 'rb') as f:
-		feature_dict = pickle.load(f)
+		raw_feature_dict = pickle.load(f)
 	with open(proc_features_path, 'rb') as f:
-		af2_proc_feature_dict = pickle.load(f)
+		af2_proc_features = pickle.load(f)
 	
-	for k, v in feature_dict.items():
-		print(k, v.shape)
-	print('\n\n\n')
-	for k, v in af2_proc_feature_dict.items():
-		print(k, v.shape, v.dtype)
+	# for k, v in feature_dict.items():
+	# 	print(k, v.shape)
+	# print('\n\n\n')
+	# for k, v in af2_proc_feature_dict.items():
+	# 	print(k, v.shape, v.dtype)
 
-	this_proc_features = af2features(feature_dict, random_seed=42)
+	this_proc_features = af2features(raw_feature_dict, random_seed=42)
+
+	common_keys = set(af2_proc_features.keys()) & set(this_proc_features.keys())
+	for k in common_keys:
+		print(k, af2_proc_features[k].shape, this_proc_features[k].shape)
+	

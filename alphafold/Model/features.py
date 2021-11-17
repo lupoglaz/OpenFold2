@@ -64,16 +64,11 @@ class AlphaFoldFeatures(nn.Module):
 		features_metadata = {name: self.protein_features[name] for name in feature_names}
 
 		tensor_dict = {}
-		for k,v in np_example.items():
-			if k == 'domain_name':
-				tensor_dict[k] = v
-				continue
+		for k, v in np_example.items():
 			if v.dtype == np.object_:
 				tensor_dict[k] = torch.from_numpy(np.fromstring(v))
 			else:
 				tensor_dict[k] = torch.from_numpy(v)
-
-			# print(k, tensor_dict[k].size())
 
 		#Reshaping tensors
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/proteins_dataset.py#L57
@@ -86,7 +81,7 @@ class AlphaFoldFeatures(nn.Module):
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/model.py#L88
 		#features.np_example_to_features
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/features.py#L76
-
+		
 		raw_features = dict(raw_features)
 		num_res = int(raw_features['seq_length'][0])
 		cfg, feature_names = self.make_data_config(num_res)
@@ -98,5 +93,26 @@ class AlphaFoldFeatures(nn.Module):
 
 		#Process tensors to get model input
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/input_pipeline.py#L125
-		# processed_batch = input_pipeline.process_tensors_from_config(tensor_dict, cfg)
+		
+		tensor_dict = transf.cast_to_64bit_ints(tensor_dict)
 		tensor_dict = transf.correct_msa_restypes(tensor_dict)
+		tensor_dict = transf.squeeze_features(tensor_dict)
+		tensor_dict = transf.randomly_replace_msa_with_unknown(tensor_dict, 0.0)
+		tensor_dict = transf.make_seq_mask(tensor_dict)
+		tensor_dict = transf.make_msa_mask(tensor_dict)
+		tensor_dict = transf.make_hhblits_profile(tensor_dict)
+		
+		print(cfg.common.use_templates)
+		if cfg.common.use_templates:
+			raise NotImplementedError()
+
+		#Ensembled features
+		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/input_pipeline.py#L64
+
+		if cfg.common.reduce_msa_clusters_by_max_templates:
+			pad_msa_clusters = cfg.eval.max_msa_clusters - cfg.eval.max_templates
+		else:
+			pad_msa_clusters = cfg.eval.max_msa_clusters
+
+		return tensor_dict
+		
