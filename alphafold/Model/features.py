@@ -35,11 +35,11 @@ class AlphaFoldFeatures(nn.Module):
 			"all_atom_positions": (torch.float32, [NUM_RES, ATOM_TYPE_NUM, 3]),
 			"all_atom_mask": (torch.int64, [NUM_RES, ATOM_TYPE_NUM]),
 			"resolution": (torch.float32, [1]),
-			"template_domain_names": (torch.uint8, [NUM_TEMPLATES]),
-			"template_sum_probs": (torch.float32, [NUM_TEMPLATES, 1]),
-			"template_aatype": (torch.float32, [NUM_TEMPLATES, NUM_RES, 22]),
-			"template_all_atom_positions": (torch.float32, [NUM_TEMPLATES, NUM_RES, ATOM_TYPE_NUM, 3]),
-			"template_all_atom_masks": (torch.float32, [NUM_TEMPLATES, NUM_RES, ATOM_TYPE_NUM, 1]),
+			#"template_domain_names": (torch.uint8, [NUM_TEMPLATES]),
+			#"template_sum_probs": (torch.float32, [NUM_TEMPLATES, 1]),
+			#"template_aatype": (torch.float32, [NUM_TEMPLATES, NUM_RES, 22]),
+			#"template_all_atom_positions": (torch.float32, [NUM_TEMPLATES, NUM_RES, ATOM_TYPE_NUM, 3]),
+			#"template_all_atom_masks": (torch.float32, [NUM_TEMPLATES, NUM_RES, ATOM_TYPE_NUM, 1]),
 		}
 
 	def make_data_config(self, num_res: int) -> Tuple[ml_collections.ConfigDict, List[str]]:
@@ -85,6 +85,7 @@ class AlphaFoldFeatures(nn.Module):
 		raw_features = dict(raw_features)
 		num_res = int(raw_features['seq_length'][0])
 		cfg, feature_names = self.make_data_config(num_res)
+		mode_cfg = cfg['eval']
 		
 		if 'deletion_matrix_int' in raw_features:
 			raw_features['deletion_matrix'] = (raw_features.pop('deletion_matrix_int').astype(np.float32))
@@ -102,17 +103,51 @@ class AlphaFoldFeatures(nn.Module):
 		tensor_dict = transf.make_msa_mask(tensor_dict)
 		tensor_dict = transf.make_hhblits_profile(tensor_dict)
 		
-		print(cfg.common.use_templates)
 		if cfg.common.use_templates:
 			raise NotImplementedError()
 
 		#Ensembled features
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/input_pipeline.py#L64
+		if "max_distillation_msa_clusters" in mode_cfg:
+			tensor_dict = transf.sample_msa_distillation(tensor_dict, mode_cfg.max_distillation_msa_clusters)
 
 		if cfg.common.reduce_msa_clusters_by_max_templates:
 			pad_msa_clusters = cfg.eval.max_msa_clusters - cfg.eval.max_templates
 		else:
 			pad_msa_clusters = cfg.eval.max_msa_clusters
+		max_msa_clusters = pad_msa_clusters
+		
+		msa_seed = None
+		if(not cfg.common.resample_msa_in_recycling):
+			msa_seed = random_seed
+		
+		tensor_dict = transf.sample_msa(tensor_dict, max_msa_clusters, keep_extra=True, seed=msa_seed)
+
+		if "masked_msa" in cfg.common:
+			tensor_dict = transf.make_masked_msa(tensor_dict, cfg.common.masked_msa, mode_cfg.masked_msa_replace_fraction)
+		
+		if cfg.common.msa_cluster_features:
+			tensor_dict = transf.nearest_neighbor_clusters(tensor_dict)
+			tensor_dict = transf.summarize_clusters(tensor_dict)
+		
+		if cfg.common.max_extra_msa:
+			tensor_dict = transf.crop_extra_msa(tensor_dict, cfg.common.max_extra_msa)
+		else:
+			tensor_dict = transf.delete_extra_msa(tensor_dict)
+
+		tensor_dict = transf.make_msa_feat(tensor_dict)
+		
+		crop_feats = dict(mode_cfg.feat)
+		if mode_cfg.fixed_size:
+			tensor_dict = transf.select_feat(tensor_dict, crop_feats)
+			tensor_dict = transf.random_crop_to_size(
+							tensor_dict, mode_cfg.crop_size, mode_cfg.max_templates, 
+							crop_feats, mode_cfg.subsample_templates, seed=random_seed+1)
+			tensor_dict = transf.make_fixed_size(
+							tensor_dict, crop_feats, pad_msa_clusters, 
+							cfg.common.max_extra_msa, mode_cfg.crop_size, mode_cfg.max_templates)
+		else:
+			tensor_dict = transf.crop_templates(tensor_dict, mode_cfg.max_templates)
 
 		return tensor_dict
 		

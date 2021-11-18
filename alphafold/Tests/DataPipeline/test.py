@@ -35,8 +35,10 @@ if __name__ == '__main__':
 	# 	print(k, v.shape, v.dtype)
 
 	this_proc_features = af2features(raw_feature_dict, random_seed=42)
-
+	
 	common_keys = set(af2_proc_features.keys()) & set(this_proc_features.keys())
+	missing_keys = set(af2_proc_features.keys()) - common_keys
+	print(missing_keys)
 	for k in common_keys:
 		print(k, af2_proc_features[k].shape, this_proc_features[k].shape)
 	
