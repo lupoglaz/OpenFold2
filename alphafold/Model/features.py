@@ -108,46 +108,62 @@ class AlphaFoldFeatures(nn.Module):
 
 		#Ensembled features
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/tf/input_pipeline.py#L64
-		if "max_distillation_msa_clusters" in mode_cfg:
-			tensor_dict = transf.sample_msa_distillation(tensor_dict, mode_cfg.max_distillation_msa_clusters)
-
-		if cfg.common.reduce_msa_clusters_by_max_templates:
-			pad_msa_clusters = cfg.eval.max_msa_clusters - cfg.eval.max_templates
+		if 'no_recycling_iters' in tensor_dict:
+			num_recycling = int(tensor_dict['no_recycling_iters'])
 		else:
-			pad_msa_clusters = cfg.eval.max_msa_clusters
-		max_msa_clusters = pad_msa_clusters
-		
-		msa_seed = None
-		if(not cfg.common.resample_msa_in_recycling):
-			msa_seed = random_seed
-		
-		tensor_dict = transf.sample_msa(tensor_dict, max_msa_clusters, keep_extra=True, seed=msa_seed)
+			num_recycling = cfg.common.num_recycle
 
-		if "masked_msa" in cfg.common:
-			tensor_dict = transf.make_masked_msa(tensor_dict, cfg.common.masked_msa, mode_cfg.masked_msa_replace_fraction)
-		
-		if cfg.common.msa_cluster_features:
-			tensor_dict = transf.nearest_neighbor_clusters(tensor_dict)
-			tensor_dict = transf.summarize_clusters(tensor_dict)
-		
-		if cfg.common.max_extra_msa:
-			tensor_dict = transf.crop_extra_msa(tensor_dict, cfg.common.max_extra_msa)
-		else:
-			tensor_dict = transf.delete_extra_msa(tensor_dict)
+		# TODO: Stack recycled stuff!!
+		#https://github.com/aqlaboratory/openfold/blob/8d1119dff18506588604949d2cc81997d63cd911/openfold/data/input_pipeline.py#L200
+		ensemble = []
+		for i in range(num_recycling+1):
+			tensor_dict_ens = copy.deepcopy(tensor_dict)
+			if "max_distillation_msa_clusters" in mode_cfg:
+				tensor_dict_ens = transf.sample_msa_distillation(tensor_dict_ens, mode_cfg.max_distillation_msa_clusters)
 
-		tensor_dict = transf.make_msa_feat(tensor_dict)
-		
-		crop_feats = dict(mode_cfg.feat)
-		if mode_cfg.fixed_size:
-			tensor_dict = transf.select_feat(tensor_dict, crop_feats)
-			tensor_dict = transf.random_crop_to_size(
-							tensor_dict, mode_cfg.crop_size, mode_cfg.max_templates, 
-							crop_feats, mode_cfg.subsample_templates, seed=random_seed+1)
-			tensor_dict = transf.make_fixed_size(
-							tensor_dict, crop_feats, pad_msa_clusters, 
-							cfg.common.max_extra_msa, mode_cfg.crop_size, mode_cfg.max_templates)
-		else:
-			tensor_dict = transf.crop_templates(tensor_dict, mode_cfg.max_templates)
+			if cfg.common.reduce_msa_clusters_by_max_templates:
+				pad_msa_clusters = cfg.eval.max_msa_clusters - cfg.eval.max_templates
+			else:
+				pad_msa_clusters = cfg.eval.max_msa_clusters
+			max_msa_clusters = pad_msa_clusters
+			
+			msa_seed = None
+			if(not cfg.common.resample_msa_in_recycling):
+				msa_seed = random_seed
+			
+			tensor_dict_ens = transf.sample_msa(tensor_dict_ens, max_msa_clusters, keep_extra=True, seed=msa_seed)
 
-		return tensor_dict
+			if "masked_msa" in cfg.common:
+				tensor_dict_ens = transf.make_masked_msa(tensor_dict_ens, cfg.common.masked_msa, mode_cfg.masked_msa_replace_fraction)
+			
+			if cfg.common.msa_cluster_features:
+				tensor_dict_ens = transf.nearest_neighbor_clusters(tensor_dict_ens)
+				tensor_dict_ens = transf.summarize_clusters(tensor_dict_ens)
+			
+			if cfg.common.max_extra_msa:
+				tensor_dict_ens = transf.crop_extra_msa(tensor_dict_ens, cfg.common.max_extra_msa)
+			else:
+				tensor_dict_ens = transf.delete_extra_msa(tensor_dict_ens)
+
+			tensor_dict_ens = transf.make_msa_feat(tensor_dict_ens)
+			
+			crop_feats = dict(mode_cfg.feat)
+			if mode_cfg.fixed_size:
+				tensor_dict_ens = transf.select_feat(tensor_dict_ens, crop_feats)
+				tensor_dict_ens = transf.random_crop_to_size(
+								tensor_dict_ens, mode_cfg.crop_size, mode_cfg.max_templates, 
+								crop_feats, mode_cfg.subsample_templates, seed=random_seed+1)
+				tensor_dict_ens = transf.make_fixed_size(
+								tensor_dict_ens, crop_feats, pad_msa_clusters, 
+								cfg.common.max_extra_msa, mode_cfg.crop_size, mode_cfg.max_templates)
+			else:
+				tensor_dict_ens = transf.crop_templates(tensor_dict_ens, mode_cfg.max_templates)
+
+			ensemble.append(tensor_dict_ens)
+		
+		ensembled_dict = {}
+		for feat in ensemble[0].keys():
+			ensembled_dict[feat] = torch.stack([dict_i[feat] for dict_i in ensemble], dim=0)
+		
+		return ensembled_dict
 		

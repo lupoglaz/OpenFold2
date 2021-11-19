@@ -5,7 +5,26 @@ import pickle
 import numpy as np
 from ...Data import pipeline
 from alphafold.Model import AlphaFold, AlphaFoldFeatures, model_config
+import torch
+import numpy as np
+import matplotlib.pylab as plt
 
+def string_plot(af2, thist, field):
+	af2t = torch.from_numpy(af2_proc_features[field][0, :])
+	thist = this_proc_features[field][0, :]
+	N = af2t.shape[0]
+	M = int(np.sqrt(N))
+	af2t = af2t[:M*M].view(M,M)
+	thist = thist[:M*M].view(M,M)
+	
+	plt.subplot(1,2,1)
+	plt.title(f'AF2: {field}')
+	plt.imshow(af2t)
+	
+	plt.subplot(1,2,2)
+	plt.title(f'This: {field}')
+	plt.imshow(thist)
+	plt.show()
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
@@ -40,5 +59,14 @@ if __name__ == '__main__':
 	missing_keys = set(af2_proc_features.keys()) - common_keys
 	print(missing_keys)
 	for k in common_keys:
+		if k.startswith('template_'):
+			continue
 		print(k, af2_proc_features[k].shape, this_proc_features[k].shape)
+	
+	
+	string_plot(af2_proc_features, this_proc_features, 'extra_msa_row_mask')
+	string_plot(af2_proc_features, this_proc_features, 'msa_row_mask')
+	string_plot(af2_proc_features, this_proc_features, 'seq_mask')
+	string_plot(af2_proc_features, this_proc_features, 'residue_index')
+
 	
