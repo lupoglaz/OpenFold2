@@ -116,12 +116,6 @@ if __name__ == '__main__':
 	with open(proc_features_path, 'rb') as f:
 		af2_proc_features = pickle.load(f)
 	
-	# for k, v in feature_dict.items():
-	# 	print(k, v.shape)
-	# print('\n\n\n')
-	# for k, v in af2_proc_feature_dict.items():
-	# 	print(k, v.shape, v.dtype)
-
 	this_proc_features = af2features(raw_feature_dict, random_seed=42)
 	
 	common_keys = set(af2_proc_features.keys()) & set(this_proc_features.keys())
@@ -149,5 +143,3 @@ if __name__ == '__main__':
 	# string_plot(af2_proc_features, this_proc_features, 'seq_mask')
 	# image_plot(af2_proc_features, this_proc_features, 'extra_has_deletion')
 	# image_plot(af2_proc_features, this_proc_features, 'extra_deletion_value')
-
-	
