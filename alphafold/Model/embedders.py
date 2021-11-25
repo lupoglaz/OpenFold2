@@ -25,12 +25,14 @@ class InputEmbeddings(nn.Module):
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		modules=[self.preprocess_1d, self.preprocess_msa, self.left_single, self.right_single, self.pair_activations]
-		names=['preprocess_1d', 'preprocess_msa', 'left_single', 'right_single', 'pair_activations']
+		names=['preprocess_1d', 'preprocess_msa', 'left_single', 'right_single', 'pair_activiations']
 		for module, name in zip(modules, names):
 			w = data[f'{rel_path}/{name}//weights']
 			b = data[f'{rel_path}/{name}//bias']
-			module.weight.copy_(torch.from_numpy(w))
-			module.bias.copy_(torch.from_numpy(b))
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w).transpose(0,1))
+			module.bias.data.copy_(torch.from_numpy(b))
 
 	def relpos(self, residue_index: torch.Tensor):
 		# Algorithm 4
@@ -44,7 +46,7 @@ class InputEmbeddings(nn.Module):
 		preprocess_msa = self.preprocess_msa(msa_feat)
 
 		#This code is: https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1712
-		expansion_shape = (-1, )*len(target_feat.shape[:-2]) + (msa.shape[-3], -1, -1)
+		expansion_shape = (-1, )*len(target_feat.shape[:-2]) + (msa_feat.shape[-3], -1, -1)
 		preprocess_1d = preprocess_1d.unsqueeze(dim=-3).expand(expansion_shape)
 		msa_activations = preprocess_1d + preprocess_msa
 		
@@ -57,7 +59,7 @@ class InputEmbeddings(nn.Module):
 		return msa_activations, pair_activations
 
 class RecycleEmbedding:
-	def __init__(self, msa_dim: int, pair_emb_dim: int, min_bin: int, max_bin: int, num_bins: int):
+	def __init__(self, msa_emb_dim: int, pair_emb_dim: int, min_bin: int, max_bin: int, num_bins: int):
 		super(RecycleEmbedding, self).__init__()
 		#Naming of the layers are:
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1730
@@ -65,23 +67,27 @@ class RecycleEmbedding:
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1745
 		self.prev_pair_norm = nn.LayerNorm(pair_emb_dim)
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1736
-		self.prev_msa_first_row_norm = nn.LayerNorm(msa_dim)
+		self.prev_msa_first_row_norm = nn.LayerNorm(msa_emb_dim)
 
 		self.bins = torch.linspace(min_bin, max_bin, num_bins)
 
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		w = data[f'{rel_path}/prev_pos_linear//weights']
 		b = data[f'{rel_path}/prev_pos_linear//bias']
-		self.prev_pos_linear.weight.copy_(torch.from_numpy(w))
-		self.prev_pos_linear.bias.copy_(torch.from_numpy(b))
+		print(f'Loading prev_pos_linear.weight: {w.shape} -> {self.prev_pos_linear.weight.size()}')
+		print(f'Loading prev_pos_linear.bias: {b.shape} -> {self.prev_pos_linear.bias.size()}')
+		self.prev_pos_linear.weight.data.copy_(torch.from_numpy(w).transpose(0,1))
+		self.prev_pos_linear.bias.data.copy_(torch.from_numpy(b))
 
 		modules=[self.prev_pair_norm, self.prev_msa_first_row_norm]
 		names=['prev_pair_norm', 'prev_msa_first_row_norm']
 		for module, name in zip(modules, names):
 			w = data[f'{rel_path}/{name}//scale']
 			b = data[f'{rel_path}/{name}//offset']
-			module.weight.copy_(torch.from_numpy(w))
-			module.bias.copy_(torch.from_numpy(b))
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w))
+			module.bias.data.copy_(torch.from_numpy(b))
 	
 	
 	def dgram_from_positions(self, x):
@@ -112,8 +118,13 @@ class ExtraMSAEmbedding:
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		w = data[f'{rel_path}/extra_msa_activations//weights']
 		b = data[f'{rel_path}/extra_msa_activations//bias']
-		self.extra_msa_activations.weight.copy_(torch.from_numpy(w))
-		self.extra_msa_activations.bias.copy_(torch.from_numpy(b))
+		print(f'Loading extra_msa_activations.weight: {w.shape} -> {self.extra_msa_activations.weight.size()}')
+		print(f'Loading extra_msa_activations.bias: {b.shape} -> {self.extra_msa_activations.bias.size()}')
+		self.extra_msa_activations.weight.data.copy_(torch.from_numpy(w).transpose(0,1))
+		self.extra_msa_activations.bias.data.copy_(torch.from_numpy(b))
+
+	def create_extra_msa_features(self, extra_msa: torch.Tensor) -> torch.Tensor:
+		pass
 
 	def forward(self, extra_msa: torch.Tensor) -> torch.Tensor:
 		return self.extra_msa_activations(extra_msa)

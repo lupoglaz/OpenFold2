@@ -256,6 +256,7 @@ def random_crop_to_size(protein, crop_size, max_templates, shape_schema, subsamp
 		num_templates_crop_size = min(num_templates - templates_crop_start, max_templates)
 	else:
 		templates_crop_start = 0
+		num_templates_crop_size = 0
 		
 	
 	n = seq_length - num_res_crop_size
