@@ -7,6 +7,7 @@ from alphafold.Model import model_config
 import numpy as np
 
 from alphafold.Model.msa import Attention, MSARowAttentionWithPairBias, MSAColumnAttention, GlobalAttention, MSAColumnGlobalAttention
+from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean
 
 def load_data(args, filename):
 	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
@@ -86,6 +87,42 @@ def MSAColumnGlobalAttentionTest(args, config, global_config):
 	
 	check_success(this_res, res)
 
+def TriangleAttentionTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleAttention')
+	conf = config.model.embeddings_and_evoformer.evoformer.triangle_attention_starting_node
+	attn = TriangleAttention(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
+	attn.load_weights_from_af2(params, rel_path='triangle_attention')
+	this_res = attn(feat['pair_act'], feat['pair_mask'])
+	
+	check_success(this_res, res)
+
+def TriangleMultiplicationTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleMultiplication')
+	conf = config.model.embeddings_and_evoformer.evoformer.triangle_multiplication_outgoing
+	attn = TriangleMultiplication(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	
+	attn.load_weights_from_af2(params, rel_path='triangle_multiplication')
+	this_res = attn(feat['pair_act'], feat['pair_mask'])
+	
+	check_success(this_res, res)
+
+def OuterProductMeanTest(args, config, global_config):
+	feat, params, res = load_data(args, 'OuterProductMean')
+	conf = config.model.embeddings_and_evoformer.evoformer.outer_product_mean
+	attn = OuterProductMean(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
+	attn.load_weights_from_af2(params, rel_path='outer_product_mean')
+	this_res = attn(feat['msa_act'], feat['msa_mask'])
+	
+	check_success(this_res, res)
+
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
@@ -99,6 +136,9 @@ if __name__=='__main__':
 	# MSAColumnAttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)
+	# TriangleAttentionTest(args, config, global_config)
+	# TriangleMultiplicationTest(args, config, global_config)
+	OuterProductMeanTest(args, config, global_config)
 
 	
 	
