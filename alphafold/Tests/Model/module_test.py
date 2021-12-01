@@ -1,3 +1,4 @@
+from typing import Dict
 import torch
 import argparse
 from pathlib import Path
@@ -7,7 +8,8 @@ from alphafold.Model import model_config
 import numpy as np
 
 from alphafold.Model.msa import Attention, MSARowAttentionWithPairBias, MSAColumnAttention, GlobalAttention, MSAColumnGlobalAttention
-from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean
+from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
+from alphafold.Model.alphafold import EvoformerIteration, EmbeddingsAndEvoformer
 
 def load_data(args, filename):
 	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
@@ -18,6 +20,8 @@ def load_data(args, filename):
 	
 	if isinstance(res, tuple):
 		res = tuple([torch.from_numpy(res_i) for res_i in res])
+	elif isinstance(res, Dict):
+		res = {k:torch.from_numpy(v) for k, v in res.items()}
 	else:
 		res = torch.from_numpy(res)
 	
@@ -123,6 +127,58 @@ def OuterProductMeanTest(args, config, global_config):
 	
 	check_success(this_res, res)
 
+def TransitionTest(args, config, global_config):
+	feat, params, res = load_data(args, 'Transition')
+	conf = config.model.embeddings_and_evoformer.evoformer.pair_transition
+	attn = Transition(conf, global_config, num_channel=feat['seq_act'].shape[-1])
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
+	attn.load_weights_from_af2(params, rel_path='transition_block')
+	this_res = attn(feat['seq_act'], feat['seq_mask'])
+	
+	check_success(this_res, res)
+
+def EvoformerIterationTest1(args, config, global_config):
+	feat, params, res = load_data(args, 'EvoformerIteration1')
+	conf = config.model.embeddings_and_evoformer.evoformer
+	
+	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
+	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
+
+	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
+	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
+	
+	this_res = attn(activations, masks, is_training=False)
+	for key in activations.keys():
+		check_success(key, this_res[key], res[key])
+
+def EvoformerIterationTest2(args, config, global_config):
+	feat, params, res = load_data(args, 'EvoformerIteration2')
+	conf = config.model.embeddings_and_evoformer.evoformer
+	
+	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=True)
+	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
+
+	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
+	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
+	
+	this_res = attn(activations, masks, is_training=False)
+	for key in activations.keys():
+		check_success(key, this_res[key], res[key])
+
+def EmbeddingsAndEvoformerTest(args, config, global_config):
+	feat, params, res = load_data(args, 'EmbeddingsAndEvoformer')
+	conf = config.model.embeddings_and_evoformer
+	
+	attn = EmbeddingsAndEvoformer(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1])
+	attn.load_weights_from_af2(params, rel_path='embeddings_and_evoformer')
+	
+	this_res = attn(feat, is_training=False)
+	for key in this_res.keys():
+		check_success(key, this_res[key], res[key])
+
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
@@ -139,6 +195,11 @@ if __name__=='__main__':
 	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
 	# OuterProductMeanTest(args, config, global_config)
+	# TransitionTest(args, config, global_config)
+	# EvoformerIterationTest1(args, config, global_config)
+	# EvoformerIterationTest2(args, config, global_config)
+	EmbeddingsAndEvoformerTest(args, config, global_config)
+	
 
 	
 	

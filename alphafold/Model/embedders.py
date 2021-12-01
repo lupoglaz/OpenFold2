@@ -11,17 +11,16 @@ def one_hot(x: torch.Tensor, bins: torch.Tensor):
 	return nn.functional.one_hot(am, num_classes=len(bins)).to(dtype=x.dtype)
 
 class InputEmbeddings(nn.Module):
-	def __init__(self, target_feat_dim: int, msa_feat_dim: int, pair_emb_dim: int, msa_emb_dim: int, relpos_wind: int):
+	def __init__(self, config, global_config, target_dim: int, msa_dim: int):
 		# Naming after this code:
 		# https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1704
 		super(InputEmbeddings, self).__init__()
-		self.preprocess_1d = nn.Linear(target_feat_dim, msa_emb_dim)
-		self.preprocess_msa = nn.Linear(msa_feat_dim, msa_emb_dim)
-		self.left_single = nn.Linear(target_feat_dim, pair_emb_dim)
-		self.right_single = nn.Linear(target_feat_dim, pair_emb_dim)
-		self.pair_activations = nn.Linear(2*relpos_wind + 1, pair_emb_dim)
-
-		self.relpos_wind = relpos_wind
+		self.relpos_wind = config.max_relative_feature
+		self.preprocess_1d = nn.Linear(target_dim, config.msa_channel)
+		self.preprocess_msa = nn.Linear(msa_dim, config.msa_channel)
+		self.left_single = nn.Linear(target_dim, config.pair_channel)
+		self.right_single = nn.Linear(target_dim, config.pair_channel)
+		self.pair_activations = nn.Linear(2*config.max_relative_feature + 1, config.pair_channel)
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		modules=[self.preprocess_1d, self.preprocess_msa, self.left_single, self.right_single, self.pair_activations]
@@ -59,17 +58,17 @@ class InputEmbeddings(nn.Module):
 		return msa_activations, pair_activations
 
 class RecycleEmbedding:
-	def __init__(self, msa_emb_dim: int, pair_emb_dim: int, min_bin: int, max_bin: int, num_bins: int):
+	def __init__(self, config, global_config):
 		super(RecycleEmbedding, self).__init__()
 		#Naming of the layers are:
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1730
-		self.prev_pos_linear = nn.Linear(num_bins, pair_emb_dim)
+		self.prev_pos_linear = nn.Linear(config.prev_pos.num_bins, config.pair_channel)
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1745
-		self.prev_pair_norm = nn.LayerNorm(pair_emb_dim)
+		self.prev_pair_norm = nn.LayerNorm(config.pair_channel)
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1736
-		self.prev_msa_first_row_norm = nn.LayerNorm(msa_emb_dim)
+		self.prev_msa_first_row_norm = nn.LayerNorm(config.msa_channel)
 
-		self.bins = torch.linspace(min_bin, max_bin, num_bins)
+		self.bins = torch.linspace(config.prev_pos.min_bin, config.prev_pos.max_bin, config.prev_pos.num_bins)
 
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		w = data[f'{rel_path}/prev_pos_linear//weights']
@@ -112,8 +111,8 @@ class RecycleEmbedding:
 		return msa_activations, pair_activations
 
 class ExtraMSAEmbedding:
-	def __init__(self, msa_dim: int, msa_emb_dim: int):
-		self.extra_msa_activations = nn.Linear(msa_dim, msa_emb_dim)
+	def __init__(self, config, global_config, msa_dim: int):
+		self.extra_msa_activations = nn.Linear(msa_dim, config.msa_channel)
 
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		w = data[f'{rel_path}/extra_msa_activations//weights']

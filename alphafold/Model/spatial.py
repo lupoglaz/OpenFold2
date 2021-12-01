@@ -143,7 +143,7 @@ class OuterProductMean(nn.Module):
 			module.bias.data.copy_(torch.from_numpy(b))
 		
 		modules=[self.left_projection, self.right_projection]
-		names=['left_projection', 'right_projection','left_gate','right_gate','output_projection','gating_linear']
+		names=['left_projection', 'right_projection']
 		for module, name in zip(modules, names):
 			w = data[f'{rel_path}/{name}']['weights']
 			b = data[f'{rel_path}/{name}']['bias']
@@ -172,4 +172,48 @@ class OuterProductMean(nn.Module):
 		eps = 1e-3
 		norm = torch.einsum('abc,adc->bdc', msa_mask, msa_mask)>=1
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
+		return act
+
+class Transition(nn.Module):
+	"""
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L484
+	"""
+	def __init__(self, config, global_config, num_channel:int) -> None:
+		super(Transition, self).__init__()
+		self.config = config
+		self.global_config = global_config
+
+		num_intermediate = int(num_channel * config.num_intermediate_factor)
+		self.input_layer_norm = nn.LayerNorm(num_channel)
+		self.transition1 = nn.Linear(num_channel, num_intermediate)
+		self.relu = nn.ReLU()
+		self.transition2 = nn.Linear(num_intermediate, num_channel)
+	
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
+		modules=[self.input_layer_norm]
+		names=['input_layer_norm']
+		for module, name in zip(modules, names):
+			w = data[f'{rel_path}/{name}']['scale']
+			b = data[f'{rel_path}/{name}']['offset']
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w))
+			module.bias.data.copy_(torch.from_numpy(b))
+		
+		modules=[self.transition1, self.transition2]
+		names=['transition1', 'transition2']
+		for module, name in zip(modules, names):
+			w = data[f'{rel_path}/{name}']['weights']
+			b = data[f'{rel_path}/{name}']['bias']
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
+			module.bias.data.copy_(torch.from_numpy(b))
+
+	def forward(self, act: torch.Tensor, mask: torch.Tensor, is_training:bool=False) -> torch.Tensor:
+		mask = mask.unsqueeze(dim=-1)
+		act = self.input_layer_norm(act)
+		act = self.transition1(act)
+		act = self.relu(act)
+		act = self.transition2(act)
 		return act
