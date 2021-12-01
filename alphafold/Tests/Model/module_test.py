@@ -24,11 +24,11 @@ def load_data(args, filename):
 	return feat, params, res
 
 def check_success(this_res, res):
-	err = torch.abs(this_res - res)
+	err = torch.abs(this_res.to(dtype=torch.float32) - res.to(dtype=torch.float32))
 	max_err = torch.max(err).item()
 	mean_err = torch.mean(err).item()
 	print(f'Max error = {max_err}, mean error = {mean_err}')
-	print(f'Success = {(max_err < 1e-7) and (mean_err < 1e-8)}')
+	print(f'Success = {(max_err < 1e-4) and (mean_err < 1e-5)}')
 
 def AttentionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'Attention')
@@ -138,7 +138,7 @@ if __name__=='__main__':
 	# MSAColumnGlobalAttentionTest(args, config, global_config)
 	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
-	OuterProductMeanTest(args, config, global_config)
+	# OuterProductMeanTest(args, config, global_config)
 
 	
 	
