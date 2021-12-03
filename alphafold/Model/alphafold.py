@@ -71,19 +71,19 @@ class EvoformerIteration(nn.Module):
 		self.triangle_attention_ending_node = TriangleAttention(config.triangle_attention_ending_node, global_config, pair_dim)
 		self.pair_transition = Transition(config.pair_transition, global_config, pair_dim)
 
-	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration'):
-		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias')
+	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
+		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias', ind=ind)
 		if not self.is_extra_msa:
-			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention')
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention', ind=ind)
 		else:
-			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_global_attention')
-		self.msa_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_transition')
-		self.outer_product_mean.load_weights_from_af2(data, rel_path=f'{rel_path}/outer_product_mean')
-		self.triangle_multiplication_outgoing.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_outgoing')
-		self.triangle_multiplication_incoming.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_incoming')
-		self.triangle_attention_starting_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_starting_node')
-		self.triangle_attention_ending_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_ending_node')
-		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition')
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_global_attention', ind=ind)
+		self.msa_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_transition', ind=ind)
+		self.outer_product_mean.load_weights_from_af2(data, rel_path=f'{rel_path}/outer_product_mean', ind=ind)
+		self.triangle_multiplication_outgoing.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_outgoing', ind=ind)
+		self.triangle_multiplication_incoming.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_incoming', ind=ind)
+		self.triangle_attention_starting_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_starting_node', ind=ind)
+		self.triangle_attention_ending_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_ending_node', ind=ind)
+		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition', ind=ind)
 
 	def forward(self, 	activations:Mapping[str, torch.Tensor], 
 						masks:Mapping[str, torch.Tensor], 
@@ -108,17 +108,85 @@ class EmbeddingsAndEvoformer(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1561
 	"""
-	def __init__(self, config, global_config, msa_dim: int, target_dim: int, is_extra_msa: bool) -> None:
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int) -> None:
 		super(EmbeddingsAndEvoformer, self).__init__()
 		self.config = config
 		self.global_config = global_config
+		
 		self.input_emb = InputEmbeddings(config, global_config, msa_dim=msa_dim, target_dim=target_dim)
 		self.recycle_emb = RecycleEmbedding(config, global_config)
-		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=msa_dim)
-		EvoformerIteration()
+		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
+		self.extra_msa_stack = []
+		for i in range(self.config.extra_msa_stack_num_block):
+			self.extra_msa_stack.append(EvoformerIteration(	config.evoformer, global_config, 
+														msa_dim=config.extra_msa_channel, 
+														pair_dim=config.pair_channel, 
+														is_extra_msa=True))
+		self.evoformer_stack = []
+		for i in range(self.config.evoformer_num_block):
+			self.evoformer_stack.append(EvoformerIteration(config.evoformer, global_config, 
+														msa_dim=config.msa_channel, 
+														pair_dim=config.pair_channel, 
+														is_extra_msa=False))
+		self.single_activations = nn.Linear(config.msa_channel, config.seq_channel)
+	
+	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration'):
+		self.input_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+		try:
+			self.recycle_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+		except:
+			pass
+		self.extra_msa_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+		for ind, extra_msa_iter in enumerate(self.extra_msa_stack):
+			extra_msa_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/extra_msa_stack', ind=ind)
+		for ind, evoformer_iter in enumerate(self.evoformer_stack):
+			evoformer_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer_iteration', ind=ind)
 
+		modules=[self.single_activations]
+		names=['single_activations']
+		for module, name in zip(modules, names):
+			w = data[f'{rel_path}/{name}']['weights']
+			b = data[f'{rel_path}/{name}']['bias']
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
+			module.bias.data.copy_(torch.from_numpy(b))
+		
 	def forward(self, batch: Mapping[str, torch.Tensor], is_training:bool=False, safe_key=None):
-		pass
+		msa_act, pair_act = self.input_emb(batch)
+
+		rec_msa_act, rec_pair_act = self.recycle_emb(batch)
+		if not(rec_msa_act is None):
+			msa_act = msa_act.index_add(0, 0, rec_msa_act)
+		if not(rec_pair_act is None):
+			pair_act += rec_pair_act
+
+		if self.config.template.enabled:
+			raise Exception(NotImplemented)
+		
+		mask_2d = batch['seq_mask'][:, None] * batch['seq_mask'][None, :]
+
+		extra_msa_act = self.extra_msa_emb(batch)
+		extra_act = {'msa': extra_msa_act, 'pair': pair_act}
+		extra_masks = {'msa':batch['extra_msa_mask'], 'pair': mask_2d}
+		for extra_msa_iteration in self.extra_msa_stack:
+			extra_act = extra_msa_iteration(activations=extra_act, masks=extra_masks, is_training=is_training)
+
+		evoformer_act = {'msa': msa_act, 'pair': extra_act['pair']}
+		evoformer_masks = {'msa': batch['msa_mask'], 'pair': mask_2d}
+		for evoformer_iteration in self.evoformer_stack:
+			evoformer_act = evoformer_iteration(activations=evoformer_act, masks=evoformer_masks, is_training=is_training)
+
+		msa_act = evoformer_act['msa']
+		pair_act = evoformer_act['pair']
+		single_act = self.single_activations(msa_act[0])
+		output = {
+			'single': single_act,
+			'pair': pair_act,
+			'msa': msa_act[:batch['msa_feat'].size(0), :, :],
+			'msa_first_row': msa_act[0]
+		}
+		return output
 
 class AlphaFoldIteration(nn.Module):
 	def __init__(self, config):

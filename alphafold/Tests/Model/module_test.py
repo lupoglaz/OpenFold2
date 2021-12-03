@@ -16,12 +16,15 @@ def load_data(args, filename):
 		feat, params, res = pickle.load(f)
 	
 	for k in feat.keys():
-		feat[k] = torch.from_numpy(feat[k])
+		try:
+			feat[k] = torch.from_numpy(feat[k])
+		except:
+			continue
 	
 	if isinstance(res, tuple):
 		res = tuple([torch.from_numpy(res_i) for res_i in res])
 	elif isinstance(res, Dict):
-		res = {k:torch.from_numpy(v) for k, v in res.items()}
+		res = {k:torch.from_numpy(v) for k, v in res.items()}		
 	else:
 		res = torch.from_numpy(res)
 	
@@ -152,13 +155,15 @@ def EvoformerIterationTest1(args, config, global_config):
 	
 	this_res = attn(activations, masks, is_training=False)
 	for key in activations.keys():
-		check_success(key, this_res[key], res[key])
+		print(key)
+		check_success(this_res[key], res[key])
 
 def EvoformerIterationTest2(args, config, global_config):
 	feat, params, res = load_data(args, 'EvoformerIteration2')
 	conf = config.model.embeddings_and_evoformer.evoformer
 	
-	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=True)
+	attn = EvoformerIteration(	conf, global_config, 
+								msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=True)
 	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
 
 	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
@@ -166,18 +171,32 @@ def EvoformerIterationTest2(args, config, global_config):
 	
 	this_res = attn(activations, masks, is_training=False)
 	for key in activations.keys():
-		check_success(key, this_res[key], res[key])
+		print(key)
+		check_success(this_res[key], res[key])
 
 def EmbeddingsAndEvoformerTest(args, config, global_config):
 	feat, params, res = load_data(args, 'EmbeddingsAndEvoformer')
 	conf = config.model.embeddings_and_evoformer
-	
-	attn = EmbeddingsAndEvoformer(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1])
-	attn.load_weights_from_af2(params, rel_path='embeddings_and_evoformer')
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param + '  ' + str(params[key][param].shape))
+	for key in feat.keys():
+		print(key, feat[key].shape)
+
+	conf.template.enabled = False	
+	conf.evoformer_num_block = 1
+	conf.extra_msa_stack_num_block = 1
+	attn = EmbeddingsAndEvoformer(conf, global_config, 
+								target_dim=feat['target_feat'].shape[-1], 
+								msa_dim=feat['msa_feat'].shape[-1],
+								extra_msa_dim=25)
+	attn.load_weights_from_af2(params, rel_path='evoformer')
 	
 	this_res = attn(feat, is_training=False)
 	for key in this_res.keys():
-		check_success(key, this_res[key], res[key])
+		print(key)
+		check_success(this_res[key], res[key])
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
