@@ -10,6 +10,7 @@ import numpy as np
 from alphafold.Model.msa import Attention, MSARowAttentionWithPairBias, MSAColumnAttention, GlobalAttention, MSAColumnGlobalAttention
 from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
 from alphafold.Model.alphafold import EvoformerIteration, EmbeddingsAndEvoformer
+from alphafold.Model.embedders import ExtraMSAEmbedding
 
 def load_data(args, filename):
 	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
@@ -187,6 +188,7 @@ def EmbeddingsAndEvoformerTest(args, config, global_config):
 	conf.template.enabled = False	
 	conf.evoformer_num_block = 1
 	conf.extra_msa_stack_num_block = 1
+	global_config.deterministic = True
 	attn = EmbeddingsAndEvoformer(conf, global_config, 
 								target_dim=feat['target_feat'].shape[-1], 
 								msa_dim=feat['msa_feat'].shape[-1],
@@ -197,6 +199,26 @@ def EmbeddingsAndEvoformerTest(args, config, global_config):
 	for key in this_res.keys():
 		print(key)
 		check_success(this_res[key], res[key])
+		if key == 'extra_msa_act':
+			print(this_res[key].sum(), res[key].sum())
+		if key == 'pair':
+			print(this_res[key].sum(), res[key].sum())
+
+def create_extra_msa_features_test(args, config, global_config):
+	feat, params, res = load_data(args, 'create_extra_msa_feature')
+	conf = config.model.embeddings_and_evoformer
+	# for key in params.keys():
+	# 	print(key)
+	# 	for param in params[key].keys():
+	# 		print('\t' + param + '  ' + str(params[key][param].shape))
+	for key in feat.keys():
+		print(key, feat[key].shape)
+
+	emb = ExtraMSAEmbedding(conf, global_config, msa_dim=feat['msa_feat'].shape[-1])
+	this_res = emb.create_extra_msa_features(feat)
+	check_success(this_res, res)
+	
+	
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
@@ -217,7 +239,10 @@ if __name__=='__main__':
 	# TransitionTest(args, config, global_config)
 	# EvoformerIterationTest1(args, config, global_config)
 	# EvoformerIterationTest2(args, config, global_config)
-	EmbeddingsAndEvoformerTest(args, config, global_config)
+	with torch.no_grad():
+		EmbeddingsAndEvoformerTest(args, config, global_config)
+	# create_extra_msa_features_test(args, config, global_config)
+
 	
 
 	

@@ -92,15 +92,15 @@ class EvoformerIteration(nn.Module):
 		msa_mask, pair_mask = masks['msa'], masks['pair']
 		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
 
-		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
-		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
-		msa_act = DO(self.msa_transition, msa_act, msa_mask)
-		pair_act = DO(self.outer_product_mean, msa_act, msa_mask, output_act=pair_act)
-		pair_act = DO(self.triangle_multiplication_outgoing, pair_act, pair_mask)
-		pair_act = DO(self.triangle_multiplication_incoming, pair_act, pair_mask)
-		pair_act = DO(self.triangle_attention_starting_node, pair_act, pair_mask)
-		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask)
-		pair_act = DO(self.pair_transition, pair_act, pair_mask)
+		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act, is_training=is_training)
+		msa_act += self.msa_column_attention(msa_act, msa_mask, is_training=is_training)
+		msa_act += self.msa_transition(msa_act, msa_mask, is_training=is_training)
+		pair_act += self.outer_product_mean(msa_act, msa_mask, is_training=is_training)
+		pair_act = DO(self.triangle_multiplication_outgoing, pair_act, pair_mask, is_training=is_training)
+		pair_act = DO(self.triangle_multiplication_incoming, pair_act, pair_mask, is_training=is_training)
+		pair_act = DO(self.triangle_attention_starting_node, pair_act, pair_mask, is_training=is_training)
+		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask, is_training=is_training)
+		pair_act += self.pair_transition(pair_act, pair_mask, is_training=is_training)
 
 		return {'msa': msa_act, 'pair': pair_act}
 		
@@ -116,18 +116,18 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.input_emb = InputEmbeddings(config, global_config, msa_dim=msa_dim, target_dim=target_dim)
 		self.recycle_emb = RecycleEmbedding(config, global_config)
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
-		self.extra_msa_stack = []
+		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
 			self.extra_msa_stack.append(EvoformerIteration(	config.evoformer, global_config, 
 														msa_dim=config.extra_msa_channel, 
 														pair_dim=config.pair_channel, 
 														is_extra_msa=True))
-		self.evoformer_stack = []
-		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIteration(config.evoformer, global_config, 
-														msa_dim=config.msa_channel, 
-														pair_dim=config.pair_channel, 
-														is_extra_msa=False))
+		# self.evoformer_stack = []
+		# for i in range(self.config.evoformer_num_block):
+		# 	self.evoformer_stack.append(EvoformerIteration(config.evoformer, global_config, 
+		# 												msa_dim=config.msa_channel, 
+		# 												pair_dim=config.pair_channel, 
+		# 												is_extra_msa=False))
 		self.single_activations = nn.Linear(config.msa_channel, config.seq_channel)
 	
 	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration'):
@@ -139,8 +139,8 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
 		for ind, extra_msa_iter in enumerate(self.extra_msa_stack):
 			extra_msa_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/extra_msa_stack', ind=ind)
-		for ind, evoformer_iter in enumerate(self.evoformer_stack):
-			evoformer_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer_iteration', ind=ind)
+		# for ind, evoformer_iter in enumerate(self.evoformer_stack):
+		# 	evoformer_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer_iteration', ind=ind)
 
 		modules=[self.single_activations]
 		names=['single_activations']
@@ -153,13 +153,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 			module.bias.data.copy_(torch.from_numpy(b))
 		
 	def forward(self, batch: Mapping[str, torch.Tensor], is_training:bool=False, safe_key=None):
-		msa_act, pair_act = self.input_emb(batch)
+		msa_act, init_pair_act = self.input_emb(batch)
 
 		rec_msa_act, rec_pair_act = self.recycle_emb(batch)
 		if not(rec_msa_act is None):
 			msa_act = msa_act.index_add(0, 0, rec_msa_act)
 		if not(rec_pair_act is None):
-			pair_act += rec_pair_act
+			init_pair_act += rec_pair_act
 
 		if self.config.template.enabled:
 			raise Exception(NotImplemented)
@@ -167,15 +167,15 @@ class EmbeddingsAndEvoformer(nn.Module):
 		mask_2d = batch['seq_mask'][:, None] * batch['seq_mask'][None, :]
 
 		extra_msa_act = self.extra_msa_emb(batch)
-		extra_act = {'msa': extra_msa_act, 'pair': pair_act}
+		extra_act = {'msa': extra_msa_act, 'pair': init_pair_act}
 		extra_masks = {'msa':batch['extra_msa_mask'], 'pair': mask_2d}
 		for extra_msa_iteration in self.extra_msa_stack:
 			extra_act = extra_msa_iteration(activations=extra_act, masks=extra_masks, is_training=is_training)
 
 		evoformer_act = {'msa': msa_act, 'pair': extra_act['pair']}
 		evoformer_masks = {'msa': batch['msa_mask'], 'pair': mask_2d}
-		for evoformer_iteration in self.evoformer_stack:
-			evoformer_act = evoformer_iteration(activations=evoformer_act, masks=evoformer_masks, is_training=is_training)
+		# for evoformer_iteration in self.evoformer_stack:
+		# 	evoformer_act = evoformer_iteration(activations=evoformer_act, masks=evoformer_masks, is_training=is_training)
 
 		msa_act = evoformer_act['msa']
 		pair_act = evoformer_act['pair']
@@ -184,7 +184,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 			'single': single_act,
 			'pair': pair_act,
 			'msa': msa_act[:batch['msa_feat'].size(0), :, :],
-			'msa_first_row': msa_act[0]
+			'msa_first_row': msa_act[0],
+			#extra debug:
+			'msa_mask': evoformer_masks['msa'],
+			'pair_mask': evoformer_masks['pair'],
+			'extra_msa_mask': batch['extra_msa_mask'],
+			'extra_msa_act': extra_msa_act,
+			'init_pair_act': init_pair_act
 		}
 		return output
 
