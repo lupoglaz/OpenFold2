@@ -35,7 +35,7 @@ def check_success(this_res, res):
 	err = torch.abs(this_res.to(dtype=torch.float32) - res.to(dtype=torch.float32))
 	max_err = torch.max(err).item()
 	mean_err = torch.mean(err).item()
-	print(f'Max error = {max_err}, mean error = {mean_err}')
+	print(f'Max error = {max_err}, mean error = {mean_err}, max_tensor = {this_res.max()}, min_tensor = {this_res.min()}')
 	print(f'Success = {(max_err < 1e-4) and (mean_err < 1e-5)}')
 
 def AttentionTest(args, config, global_config):
@@ -185,7 +185,9 @@ def EmbeddingsAndEvoformerTest(args, config, global_config):
 	for key in feat.keys():
 		print(key, feat[key].shape)
 
-	conf.template.enabled = False	
+	conf.template.enabled = False
+	conf.recycle_pos = False
+	conf.recycle_features = False
 	conf.evoformer_num_block = 1
 	conf.extra_msa_stack_num_block = 1
 	global_config.deterministic = True

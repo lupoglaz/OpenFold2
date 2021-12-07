@@ -199,7 +199,7 @@ class OuterProductMean(nn.Module):
 		act = torch.einsum('dceb,cef->bdf', act, self.output_w) + self.output_b
 		
 		eps = 1e-3
-		norm = torch.einsum('abc,adc->bdc', msa_mask, msa_mask)>=1
+		norm = torch.einsum('abc,adc->bdc', msa_mask, msa_mask)#>=1
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
 		return act
 
