@@ -7,25 +7,28 @@ import numpy as np
 from alphafold.Model import model_config
 import numpy as np
 
-from alphafold.Model.msa import Attention, MSARowAttentionWithPairBias, MSAColumnAttention, GlobalAttention, MSAColumnGlobalAttention
-from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
-from alphafold.Model.alphafold import EvoformerIteration, EmbeddingsAndEvoformer
-from alphafold.Model.embedders import ExtraMSAEmbedding
-
+from alphafold.Model.structure import InvariantPointAttention
+from alphafold.Model.affine import QuatAffine
 from alphafold.Tests.Model.module_test import load_data, check_success
 
 def InvariantPointAttentionTest(args, config, global_config):
-	feat, params, res = load_data(args, 'EvoformerIteration2')
-	conf = config.model.embeddings_and_evoformer.evoformer
-	
-	attn = EvoformerIteration(	conf, global_config, 
-								msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=True)
-	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
+	feat, params, res = load_data(args, 'InvariantPointAttention')
+	conf = config.model.heads.structure_module
 
-	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
-	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
 	
-	this_res = attn(activations, masks, is_training=False)
+	attn = InvariantPointAttention(	conf, global_config, 
+									num_res=feat['inputs_1d'].shape[-2], 
+									num_seq=feat['inputs_2d'].shape[-3], 
+									num_feat_1d=feat['inputs_1d'].shape[-1],
+									num_feat_2d=feat['inputs_2d'].shape[-1])
+	attn.load_weights_from_af2(params, rel_path='invariant_point_attention')
+	
+	qa = QuatAffine.from_tensor(feat['activations'])
+	this_res = attn(inputs_1d = feat['inputs_1d'], inputs_2d = feat['inputs_2d'], mask=feat['mask'], affine=qa)
 	for key in activations.keys():
 		print(key)
 		check_success(this_res[key], res[key])
@@ -37,3 +40,6 @@ if __name__=='__main__':
 	args = parser.parse_args()
 	config = model_config('model_1')
 	global_config = config.model.global_config
+	
+
+	InvariantPointAttentionTest(args, config, global_config)

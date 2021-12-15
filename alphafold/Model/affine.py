@@ -72,12 +72,21 @@ class QuatAffine(object):
 							normalize=False)
 	
 	def apply_to_point(self, point, extra_dims=0):
-		r = self.rotation
-		t = self.translation
-		for _ in range(extra_dims):
-			r = r.unsqueeze(dim=-1)
-			t = t.unsqueeze(dim=-1)
-		
+		# r = self.rotation
+		# t = self.translation
+		r, t = [], []
+		for t_i in self.translation:
+			t_iu = t_i
+			for _ in range(extra_dims):
+				t_iu = t_iu.unsqueeze(dim=-1)
+			t.append(t_iu)
+		for r_i in self.rotation:
+			for r_ij in r_i:
+				r_iju = r_ij
+				for _ in range(extra_dims):
+					r_iju = r_iju.unsqueeze(dim=-1)
+				r.append(r_iju)
+		print(len(point))
 		r_p = apply_rot_to_vec(r, point)
 		return [r_p[0]+t[0], r_p[1]+t[1], r_p[2]+t[2]]
 

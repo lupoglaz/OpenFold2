@@ -122,7 +122,7 @@ if __name__=='__main__':
 	# apply_rot_func_test(args, 'quat_apply_rotation_func')
 	# to_tensor_test(args, 'quat_to_tensor')
 	# apply_to_point_test(args, 'quat_apply_to_point')
-	invert_point_test(args, 'quat_invert_point')
+	# invert_point_test(args, 'quat_invert_point')
 
 
 	
