@@ -1,8 +1,15 @@
 import functools
+import collections
 from typing import Tuple
 
 import torch
 import numpy as np
+
+Vecs = collections.namedtuple('Vecs', ['x', 'y', 'z'])
+Rots = collections.namedtuple('Rots', [	'xx', 'xy', 'xz',
+										'yx', 'yy', 'yz',
+										'zx', 'zy', 'zz'])
+Rigids = collections.namedtuple('Rigids', ['rot', 'trans'])
 
 def quat_to_rot(quaternion):
 	q0, q1, q2, q3 = quaternion[..., 0], quaternion[..., 1], quaternion[..., 2], quaternion[..., 3]
@@ -48,6 +55,7 @@ class QuatAffine(object):
 		self.quaternion = quaternion
 		self.rotation = [list(row) for row in rotation]
 		self.translation = list(translation)
+		# print(self.quaternion.dtype, self.rotation[0][0].dtype,self.translation[0].dtype)
 
 		assert all(len(row) == 3 for row in self.rotation)
 		assert len(self.translation) == 3
@@ -81,20 +89,43 @@ class QuatAffine(object):
 				t_iu = t_iu.unsqueeze(dim=-1)
 			t.append(t_iu)
 		for r_i in self.rotation:
+			r_vec = []
 			for r_ij in r_i:
 				r_iju = r_ij
 				for _ in range(extra_dims):
 					r_iju = r_iju.unsqueeze(dim=-1)
-				r.append(r_iju)
-		print(len(point))
+				r_vec.append(r_iju)
+			r.append(r_vec)
 		r_p = apply_rot_to_vec(r, point)
 		return [r_p[0]+t[0], r_p[1]+t[1], r_p[2]+t[2]]
 
 	def invert_point(self, transformed_point, extra_dims=0):
-		r = self.rotation
-		t = self.translation
-		for _ in range(extra_dims):
-			r = r.unsqueeze(dim=-1)
-			t = t.unsqueeze(dim=-1)
+		# r = self.rotation
+		# t = self.translation
+		# for _ in range(extra_dims):
+		# 	r = r.unsqueeze(dim=-1)
+		# 	t = t.unsqueeze(dim=-1)
+		r, t = [], []
+		for t_i in self.translation:
+			t_iu = t_i
+			for _ in range(extra_dims):
+				t_iu = t_iu.unsqueeze(dim=-1)
+			t.append(t_iu)
+		for r_i in self.rotation:
+			r_vec = []
+			for r_ij in r_i:
+				r_iju = r_ij
+				for _ in range(extra_dims):
+					r_iju = r_iju.unsqueeze(dim=-1)
+				r_vec.append(r_iju)
+			r.append(r_vec)
 		r_p = [transformed_point[0]-t[0], transformed_point[1]-t[1], transformed_point[2]-t[2]]
 		return apply_inverse_rot_to_vec(r, r_p)
+
+	def to_rigids(self) -> Rigids:
+		r = self.rotation
+		t = self.translation
+		return Rigids(	Rots(	r[0][0], r[0][1], r[0][2],
+								r[1][0], r[1][1], r[1][2],
+								r[2][0], r[2][1], r[2][2]), 
+						Vecs(t[0], t[1], t[2]))

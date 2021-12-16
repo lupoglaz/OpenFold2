@@ -13,6 +13,8 @@ def convert(arg):
 		return [convert(arg_i) for arg_i in arg]
 	elif isinstance(arg, np.ndarray):
 		return torch.from_numpy(arg)
+	elif isinstance(arg, dict):
+		return {k: convert(v) for k, v in arg.items()}
 	else:
 		raise(NotImplementedError())
 
@@ -23,21 +25,36 @@ def load_data(args, filename):
 	return convert(fnargs), res
 
 def check_success(this_res, res):
-	err = torch.abs(this_res.to(dtype=torch.float32) - res.to(dtype=torch.float32))
+	err = torch.abs(this_res.detach().to(dtype=torch.float32) - res.to(dtype=torch.float32))
 	max_err = torch.max(err).item()
 	mean_err = torch.mean(err).item()
 	return err.sum(), max_err, mean_err
 
-def check_recursive(a, b):
+def check_recursive(a, b, depth:int=0, key=None):
 	if isinstance(a, tuple) or isinstance(a, list):
 		errs = []
 		max_errs = []
 		mean_errs = []
-		for a_i, b_i in zip(a, b):
-			err_i, max_err_i, mean_err_i = check_recursive(a_i, b_i)
+		for i, (a_i, b_i) in enumerate(zip(a, b)):
+			err_i, max_err_i, mean_err_i = check_recursive(a_i, b_i, depth=depth+1, key=i)
 			errs.append(err_i)
 			max_errs.append(max_err_i)
 			mean_errs.append(mean_err_i)
+		
+		print(i, np.sum(errs), max(max_errs), np.mean(mean_errs))
+		return np.sum(errs), max(max_errs), np.mean(mean_errs)
+	
+	if isinstance(a, dict):
+		errs = []
+		max_errs = []
+		mean_errs = []
+		for key in zip(a.keys()):
+			err_i, max_err_i, mean_err_i = check_recursive(a[key], b[key], depth=depth+1, key=key)
+			errs.append(err_i)
+			max_errs.append(max_err_i)
+			mean_errs.append(mean_err_i)
+
+		print(key, np.sum(errs), max(max_errs), np.mean(mean_errs))
 		return np.sum(errs), max(max_errs), np.mean(mean_errs)
 	
 	if isinstance(a, np.ndarray):
