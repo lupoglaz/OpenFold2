@@ -1,6 +1,6 @@
 import torch
 from torch import distributions
-from alphafold.Common import residues_constants
+from alphafold.Common import residue_constants
 from functools import reduce
 from operator import add
 import numpy as np
@@ -23,7 +23,7 @@ def cast_to_64bit_ints(protein):
 	return protein
 
 def correct_msa_restypes(protein):
-	new_order_list = residues_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE
+	new_order_list = residue_constants.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE
 	new_order = torch.tensor([new_order_list]*protein['msa'].size(1), dtype=torch.long).transpose(0,1)
 	protein['msa'] = torch.gather(new_order, 0, protein['msa'])
 

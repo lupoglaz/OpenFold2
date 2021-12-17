@@ -6,6 +6,7 @@ import pickle
 import numpy as np
 from alphafold.Model import model_config
 import numpy as np
+from collections import namedtuple
 
 from alphafold.Model.msa import Attention, MSARowAttentionWithPairBias, MSAColumnAttention, GlobalAttention, MSAColumnGlobalAttention
 from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition

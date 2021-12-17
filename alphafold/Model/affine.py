@@ -1,6 +1,6 @@
 import functools
 import collections
-from typing import Tuple
+from typing import Tuple, Sequence
 
 import torch
 import numpy as np
@@ -10,6 +10,49 @@ Rots = collections.namedtuple('Rots', [	'xx', 'xy', 'xz',
 										'yx', 'yy', 'yz',
 										'zx', 'zy', 'zz'])
 Rigids = collections.namedtuple('Rigids', ['rot', 'trans'])
+
+
+def vecs_apply(func, *args:Sequence[Vecs]):
+	return Vecs(func(*[arg.x for arg in args]), func(*[arg.y for arg in args]), func(*[arg.z for arg in args]))
+
+def rots_apply(func, *args:Sequence[Rots]):
+	return Rots(func(*[arg.xx for arg in args]), func(*[arg.xy for arg in args]), func(*[arg.xz for arg in args]),
+				func(*[arg.yx for arg in args]), func(*[arg.yy for arg in args]), func(*[arg.yz for arg in args]),
+				func(*[arg.zx for arg in args]), func(*[arg.zy for arg in args]), func(*[arg.zz for arg in args]))
+
+def rigids_apply(func, *args:Sequence[Rigids]):
+	return Rigids(rots_apply(func, *[arg.rot for arg in args]), vecs_apply(func, *[arg.trans for arg in args]))
+
+def rigids_to_tensor_flat12(r:Rigids):
+	return torch.stack(list(r.rot) + list(r.trans), dim=-1)
+
+def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
+	assert m.size(-1) == 4
+	assert m.size(-2) == 4
+	return Rigids(	Rots(	m[..., 0, 0], m[..., 0, 1], m[..., 0, 2],
+							m[..., 1, 0], m[..., 1, 1], m[..., 1, 2],
+							m[..., 2, 0], m[..., 2, 1], m[..., 2, 2]),
+					Vecs(	m[..., 0, 3], m[..., 1, 3], m[..., 2, 3]))
+
+def rots_mul_vecs(m:Rots, v:Vecs):
+	return Vecs(m.xx*v.x + m.xy*v.y + m.xz*v.z,
+				m.yx*v.x + m.yy*v.y + m.yz*v.z,
+				m.zx*v.x + m.zy*v.y + m.zz*v.z)
+
+def rots_mul_rots(a:Rots, b:Rots):
+	c0 = rots_mul_vecs(a, Vecs(b.xx, b.yx, b.zx))
+	c1 = rots_mul_vecs(a, Vecs(b.xy, b.yy, b.zy))
+	c2 = rots_mul_vecs(a, Vecs(b.xz, b.yz, b.zz))
+	return Rots(c0.x, c1.x, c2.x, c0.y, c1.y, c2.y, c0.z, c1.z, c2.z)
+
+def vecs_add(a:Vecs, b:Vecs):
+	return Vecs(a.x+b.x, a.y+b.y, a.z+b.z)
+
+def rigids_mul_rots(r:Rigids, m:Rots):
+	return Rigids(rots_mul_rots(r.rot, m), r.trans)
+
+def rigids_mul_rigids(a:Rigids, b:Rigids):
+	return Rigids(rots_mul_rots(a.rot, b.rot), vecs_add(a.trans, rots_mul_vecs(a.rot, b.trans)))
 
 def quat_to_rot(quaternion):
 	q0, q1, q2, q3 = quaternion[..., 0], quaternion[..., 1], quaternion[..., 2], quaternion[..., 3]

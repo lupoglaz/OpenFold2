@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from typing import Tuple, Mapping
-from alphafold.Common import residues_constants
+from alphafold.Common import residue_constants
 
 def one_hot(x: torch.Tensor, bins: torch.Tensor):
 	#Code taken from https://github.com/aqlaboratory/openfold/blob/03bb003a9d61ed0a0db66bb996f46b1754d7d821/openfold/utils/tensor_utils.py#L60
@@ -115,9 +115,9 @@ class RecycleEmbedding(nn.Module):
 		https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1541
 		"""
 
-		is_gly = torch.eq(aatype, residues_constants.restype_order['G'])
-		ca_idx = residues_constants.atom_order['CA']
-		cb_idx = residues_constants.atom_order['CB']
+		is_gly = torch.eq(aatype, residue_constants.restype_order['G'])
+		ca_idx = residue_constants.atom_order['CA']
+		cb_idx = residue_constants.atom_order['CB']
 		pseudo_beta = torch.where(
 			torch.tile(is_gly[..., None], [1] * len(is_gly.shape) + [3]),
 			all_atom_positions[..., ca_idx, :],

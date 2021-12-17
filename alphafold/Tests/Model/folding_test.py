@@ -9,6 +9,7 @@ import numpy as np
 
 from alphafold.Model.structure import InvariantPointAttention
 from alphafold.Model.protein import torsion_angles_to_frames
+from alphafold.Model import affine
 from alphafold.Model.affine import QuatAffine
 from alphafold.Tests.Model.quaternion_test import load_data as quat_load_data
 from alphafold.Tests.Model.quaternion_test import convert, check_recursive
@@ -40,6 +41,7 @@ def test_torsion_angles_to_frames(args):
 	(activations, aatype, torsion_angles_sin_cos), res = quat_load_data(args, 'test_torsion_angles_to_frames')
 	rigs = QuatAffine.from_tensor(activations).to_rigids()
 	this_res = torsion_angles_to_frames(aatype=aatype, backb_to_global=rigs, torsion_angles_sin_cos=torsion_angles_sin_cos)
+	this_res = affine.rigids_to_tensor_flat12(this_res)
 	print(check_recursive(this_res, res))
 
 def test_frames_and_literature_positions_to_atom14_pos(args):
@@ -61,5 +63,5 @@ if __name__=='__main__':
 	
 
 	# InvariantPointAttentionTest(args, config, global_config)
-	# test_torsion_angles_to_frames(args)
+	test_torsion_angles_to_frames(args)
 	# test_frames_and_literature_positions_to_atom14_pos(args)

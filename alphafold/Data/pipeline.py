@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Mapping, Sequence, Any, Optional
 from alphafold.Data.Tools import HHSearch, HHBlits, Jackhammer
 from alphafold.Data import parsers
-from alphafold.Common import residues_constants
+from alphafold.Common import residue_constants
 import numpy as np
 
 FeatureDict = Mapping[str, np.ndarray]
@@ -51,7 +51,7 @@ class DataPipeline:
 
 	def make_sequence_features(self, sequence: str, description: str, num_res: int) ->FeatureDict:
 		return {
-			'aatype': residues_constants.sequence_to_onehot(sequence=sequence, mapping=residues_constants.restype_order_with_x, map_unknown_to_x=True),
+			'aatype': residue_constants.sequence_to_onehot(sequence=sequence, mapping=residue_constants.restype_order_with_x, map_unknown_to_x=True),
 			'between_segment_residues': np.zeros((num_res, ), dtype=np.int32),
 			'domain_name': np.array([description.encode('utf-8')], dtype=np.object_),
 			'residue_index': np.array(range(num_res), dtype=np.int32),
