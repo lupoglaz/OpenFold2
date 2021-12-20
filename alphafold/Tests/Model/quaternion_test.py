@@ -16,7 +16,8 @@ def convert(arg):
 	elif isinstance(arg, dict):
 		return {k: convert(v) for k, v in arg.items()}
 	else:
-		raise(NotImplementedError())
+		return arg
+		# raise(NotImplementedError())
 
 def load_data(args, filename):
 	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
@@ -48,7 +49,7 @@ def check_recursive(a, b, depth:int=0, key=None):
 		errs = []
 		max_errs = []
 		mean_errs = []
-		for key in zip(a.keys()):
+		for key in a.keys():
 			err_i, max_err_i, mean_err_i = check_recursive(a[key], b[key], depth=depth+1, key=key)
 			errs.append(err_i)
 			max_errs.append(max_err_i)
@@ -128,6 +129,14 @@ def invert_point_test(args, name):
 	print(f'Max error = {max_err}, mean error = {mean_err} total error = {err}')
 	print(f'Success = {(max_err < 1e-4) and (mean_err < 1e-5)}')
 
+def pre_compose_test(args, name):
+	(tensor, update), res = load_data(args, name)
+	qa = QuatAffine.from_tensor(tensor)
+	this_res = qa.pre_compose(update).to_tensor()
+	err, max_err, mean_err = check_recursive(res, this_res)
+	print(f'Max error = {max_err}, mean error = {mean_err} total error = {err}')
+	print(f'Success = {(max_err < 1e-4) and (mean_err < 1e-5)}')
+
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
@@ -140,6 +149,7 @@ if __name__=='__main__':
 	# to_tensor_test(args, 'quat_to_tensor')
 	# apply_to_point_test(args, 'quat_apply_to_point')
 	# invert_point_test(args, 'quat_invert_point')
+	pre_compose_test(args, 'quat_pre_compose')
 
 
 	

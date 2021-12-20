@@ -12,18 +12,18 @@ Rots = collections.namedtuple('Rots', [	'xx', 'xy', 'xz',
 Rigids = collections.namedtuple('Rigids', ['rot', 'trans'])
 
 
-def vecs_apply(func, *args:Sequence[Vecs]):
+def vecs_apply(func, *args:Sequence[Vecs]) -> Vecs:
 	return Vecs(func(*[arg.x for arg in args]), func(*[arg.y for arg in args]), func(*[arg.z for arg in args]))
 
-def rots_apply(func, *args:Sequence[Rots]):
+def rots_apply(func, *args:Sequence[Rots]) -> Rots:
 	return Rots(func(*[arg.xx for arg in args]), func(*[arg.xy for arg in args]), func(*[arg.xz for arg in args]),
 				func(*[arg.yx for arg in args]), func(*[arg.yy for arg in args]), func(*[arg.yz for arg in args]),
 				func(*[arg.zx for arg in args]), func(*[arg.zy for arg in args]), func(*[arg.zz for arg in args]))
 
-def rigids_apply(func, *args:Sequence[Rigids]):
+def rigids_apply(func, *args:Sequence[Rigids]) -> Rigids:
 	return Rigids(rots_apply(func, *[arg.rot for arg in args]), vecs_apply(func, *[arg.trans for arg in args]))
 
-def rigids_to_tensor_flat12(r:Rigids):
+def rigids_to_tensor_flat12(r:Rigids) -> torch.Tensor:
 	return torch.stack(list(r.rot) + list(r.trans), dim=-1)
 
 def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
@@ -34,24 +34,34 @@ def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
 							m[..., 2, 0], m[..., 2, 1], m[..., 2, 2]),
 					Vecs(	m[..., 0, 3], m[..., 1, 3], m[..., 2, 3]))
 
-def rots_mul_vecs(m:Rots, v:Vecs):
+def vecs_from_tensor(x: torch.Tensor) -> Vecs:
+	assert x.size(-1) == 3
+	return Vecs(x[..., 0], x[..., 1], x[..., 2])
+
+def vecs_to_tensor(v: Vecs) -> torch.Tensor:
+	return torch.stack([v.x, v.y, v.z], dim=-1)
+
+def rots_mul_vecs(m:Rots, v:Vecs) -> Vecs:
 	return Vecs(m.xx*v.x + m.xy*v.y + m.xz*v.z,
 				m.yx*v.x + m.yy*v.y + m.yz*v.z,
 				m.zx*v.x + m.zy*v.y + m.zz*v.z)
 
-def rots_mul_rots(a:Rots, b:Rots):
+def rots_mul_rots(a:Rots, b:Rots) -> Rots:
 	c0 = rots_mul_vecs(a, Vecs(b.xx, b.yx, b.zx))
 	c1 = rots_mul_vecs(a, Vecs(b.xy, b.yy, b.zy))
 	c2 = rots_mul_vecs(a, Vecs(b.xz, b.yz, b.zz))
 	return Rots(c0.x, c1.x, c2.x, c0.y, c1.y, c2.y, c0.z, c1.z, c2.z)
 
-def vecs_add(a:Vecs, b:Vecs):
+def vecs_add(a:Vecs, b:Vecs) -> Vecs:
 	return Vecs(a.x+b.x, a.y+b.y, a.z+b.z)
 
-def rigids_mul_rots(r:Rigids, m:Rots):
+def rigids_mul_vecs(r:Rigids, v:Vecs) -> Rigids:
+	return vecs_add(rots_mul_vecs(r.rot, v), r.trans)
+
+def rigids_mul_rots(r:Rigids, m:Rots) -> Rigids:
 	return Rigids(rots_mul_rots(r.rot, m), r.trans)
 
-def rigids_mul_rigids(a:Rigids, b:Rigids):
+def rigids_mul_rigids(a:Rigids, b:Rigids) -> Rigids:
 	return Rigids(rots_mul_rots(a.rot, b.rot), vecs_add(a.trans, rots_mul_vecs(a.rot, b.trans)))
 
 def quat_to_rot(quaternion):
@@ -76,6 +86,11 @@ def apply_inverse_rot_to_vec(rot, vec):
 			rot[0][1]*x + rot[1][1]*y + rot[2][1]*z,
 			rot[0][2]*x + rot[1][2]*y + rot[2][2]*z]
 
+
+def quat_multiply_by_vec(quat, vec):
+	a, b, c, d = tuple([quat[..., i] for i in range(4)])
+	l, m, n = tuple([vec[..., i] for i in range(3)])
+	return torch.stack([-b*l - c*m - d*n, a*l + c*n - d*m, a*m - b*n + d*l, a*n + b*m - c*l], dim=-1)
 
 class QuatAffine(object):
 	"""
@@ -172,3 +187,11 @@ class QuatAffine(object):
 								r[1][0], r[1][1], r[1][2],
 								r[2][0], r[2][1], r[2][2]), 
 						Vecs(t[0], t[1], t[2]))
+
+	def pre_compose(self, update:torch.Tensor):
+		vector_quaternion_update = update[...,:3]
+		trans_update = [update[..., i] for i in range(3,6)]
+		new_quaternion = self.quaternion + quat_multiply_by_vec(self.quaternion, vector_quaternion_update)
+		trans_update = apply_rot_to_vec(self.rotation, trans_update)
+		new_translation = [self.translation[i] + trans_update[i] for i in range(3)]
+		return QuatAffine(new_quaternion, new_translation)
