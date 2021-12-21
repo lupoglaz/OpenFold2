@@ -7,7 +7,7 @@ import numpy as np
 from alphafold.Model import model_config
 import numpy as np
 
-from alphafold.Model.structure import InvariantPointAttention, MultiRigidSidechain, FoldIteration
+from alphafold.Model.structure import InvariantPointAttention, MultiRigidSidechain, FoldIteration, StructureModule
 from alphafold.Model.protein import torsion_angles_to_frames, frames_and_literature_positions_to_atom14_pos
 from alphafold.Model import affine
 from alphafold.Model.affine import QuatAffine
@@ -27,7 +27,6 @@ def InvariantPointAttentionTest(args, config, global_config):
 	
 	attn = InvariantPointAttention(	conf, global_config, 
 									num_res=feat['inputs_1d'].shape[-2], 
-									num_seq=feat['inputs_2d'].shape[-3], 
 									num_feat_1d=feat['inputs_1d'].shape[-1],
 									num_feat_2d=feat['inputs_2d'].shape[-1])
 	attn.load_weights_from_af2(params, rel_path='invariant_point_attention')
@@ -86,8 +85,7 @@ def FoldIterationTest(args, config, global_config):
 			print('\t' + param)
 	
 	attn = FoldIteration(conf, global_config, 
-						num_res=feat['static_feat_2d'].shape[-3], 
-						num_seq=feat['static_feat_2d'].shape[-2], 
+						num_res=feat['static_feat_2d'].shape[-3],  
 						num_feat_1d=feat['activations']['act'].shape[-1],
 						num_feat_2d=feat['static_feat_2d'].shape[-1],
 						# num_feat_2d= feat['activations']['act'].shape[-1]
@@ -98,6 +96,35 @@ def FoldIterationTest(args, config, global_config):
 	this_res = attn(**feat)
 	this_res[1]['sc']['atom_pos'] = affine.vecs_to_tensor(this_res[1]['sc']['atom_pos'])
 	this_res[1]['sc']['frames'] = affine.rigids_to_tensor_flat12(this_res[1]['sc']['frames'])
+	print(check_recursive(this_res, res))
+
+def StructureModuleTest(args, config, global_config):
+	print('StructureModuleTest')
+	feat, params, res = load_data(args, 'StructureModule')
+	conf = config.model.heads.structure_module
+	representations = feat['representations']
+	batch = feat['batch']
+
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
+	
+	for key in representations.keys():
+		print(key, representations[key].dtype)
+	
+	for key in batch.keys():
+		print(key, batch[key].dtype)
+	
+	attn = StructureModule(conf, global_config, 
+						num_res=representations['single'].shape[-2],
+						num_feat_1d=representations['single'].shape[-1],
+						num_feat_2d=representations['pair'].shape[-1]
+						)
+						
+	attn.load_weights_from_af2(params, rel_path='structure_module')
+	
+	this_res = attn(representations, batch)
 	print(check_recursive(this_res, res))
 
 if __name__=='__main__':
@@ -113,4 +140,5 @@ if __name__=='__main__':
 	# test_torsion_angles_to_frames(args)
 	# test_frames_and_literature_positions_to_atom14_pos(args)
 	# MultiRigidSidechainTest(args, config, global_config)
-	FoldIterationTest(args, config, global_config)
+	# FoldIterationTest(args, config, global_config)
+	StructureModuleTest(args, config, global_config)
