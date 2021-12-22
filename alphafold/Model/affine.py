@@ -26,6 +26,11 @@ def rigids_apply(func, *args:Sequence[Rigids]) -> Rigids:
 def rigids_to_tensor_flat12(r:Rigids) -> torch.Tensor:
 	return torch.stack(list(r.rot) + list(r.trans), dim=-1)
 
+def rigids_from_tensor_flat12(t:torch.Tensor) -> Rigids:
+	assert t.size(-1) == 12
+	x = t.moveaxis(-1, 0)
+	return Rigids(Rots(*x[:9]), Vecs(*x[9:]))
+
 def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
 	assert m.size(-1) == 4
 	assert m.size(-2) == 4
@@ -41,6 +46,9 @@ def vecs_from_tensor(x: torch.Tensor) -> Vecs:
 def vecs_to_tensor(v: Vecs) -> torch.Tensor:
 	return torch.stack([v.x, v.y, v.z], dim=-1)
 
+def vecs_squared_dist(v1:Vecs, v2:Vecs) -> torch.Tensor:
+	return (torch.square(v1.x - v2.x) + torch.square(v1.y - v2.y) + torch.square(v1.z - v2.z))
+
 def rots_mul_vecs(m:Rots, v:Vecs) -> Vecs:
 	return Vecs(m.xx*v.x + m.xy*v.y + m.xz*v.z,
 				m.yx*v.x + m.yy*v.y + m.yz*v.z,
@@ -51,6 +59,11 @@ def rots_mul_rots(a:Rots, b:Rots) -> Rots:
 	c1 = rots_mul_vecs(a, Vecs(b.xy, b.yy, b.zy))
 	c2 = rots_mul_vecs(a, Vecs(b.xz, b.yz, b.zz))
 	return Rots(c0.x, c1.x, c2.x, c0.y, c1.y, c2.y, c0.z, c1.z, c2.z)
+
+def rots_invert(m:Rots) -> Rots:
+	return Rots(m.xx, m.yx, m.zx,
+				m.xy, m.yy, m.zy,
+				m.xz, m.yz, m.zz)
 
 def vecs_add(a:Vecs, b:Vecs) -> Vecs:
 	return Vecs(a.x+b.x, a.y+b.y, a.z+b.z)
@@ -63,6 +76,12 @@ def rigids_mul_rots(r:Rigids, m:Rots) -> Rigids:
 
 def rigids_mul_rigids(a:Rigids, b:Rigids) -> Rigids:
 	return Rigids(rots_mul_rots(a.rot, b.rot), vecs_add(a.trans, rots_mul_vecs(a.rot, b.trans)))
+
+def rigids_invert(r:Rigids) -> Rigids:
+	inv_rots = rots_invert(r.rot)
+	t = rots_mul_vecs(inv_rots, r.trans)
+	inv_trans = Vecs(t.x, t.y, t.z)
+	return Rigids(inv_rots, inv_trans)
 
 def quat_to_rot(quaternion):
 	q0, q1, q2, q3 = quaternion[..., 0], quaternion[..., 1], quaternion[..., 2], quaternion[..., 3]

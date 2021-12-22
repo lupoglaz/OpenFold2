@@ -3,7 +3,8 @@ from torch import nn
 from alphafold.Model.msa import *
 from alphafold.Model.spatial import *
 from alphafold.Model.embedders import *
-from typing import Mapping
+from alphafold.Model.Heads import *
+from typing import Mapping, OrderedDict
 import functools
 
 def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,  
@@ -199,25 +200,95 @@ class AlphaFoldIteration(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L123
 	"""
-	def __init__(self, config, global_config):
+	HIGH = 1
+	LOW = 2
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
 		super().__init__()
 		self.config = config
 		self.global_config = global_config
+		self.compute_loss = compute_loss
+
+		self.evoformer_module = EmbeddingsAndEvoformer(config.embeddings_and_evoformer, global_config, 
+														target_dim=target_dim,
+														msa_dim=msa_dim,
+														extra_msa_dim=extra_msa_dim)
+		head_dict = {
+			'masked_msa': (MaskedMSAHead, self.LOW),
+			'distogram': (DistogramHead, self.LOW),
+			'structure_module': (functools.partial(StructureModule, compute_loss=compute_loss), self.HIGH),
+			'predicted_lddt': (PredictedLDDTHead, self.LOW),
+			'predicted_aligned_error': (PredictedAlignedErrorHead, self.LOW),
+			'experimentally_resolved': (ExperimentallyResolvedHead, self.LOW)
+		}
+		self.heads = {}
+		self.head_order = []
+		for head_name, head_config in sorted(self.config.heads.items()):
+			if not head_config.weight:
+				continue
+			head_factory, priority = head_dict[head_name]
+			self.head_order.append((priority, head_name))
+			self.heads[head_name] = (head_config, head_factory(head_config, global_config))
+		self.head_order.sort(lambda x: x[0])
 	
+	def load_weights_from_af2(self, data, rel_path: str='alphafold_iteration', ind:int=None):
+		for name, (config, module) in self.heads.items():
+			module.load_weights_from_af2(data, rel_path=f'{rel_path}/{name}', ind=ind)
+		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer', ind=ind)
+
 	def forward(self, ensembled_batch, non_ensembled_batch, 
-				is_training:bool=False, compute_loss:bool=False, 
+				is_training:bool=False, 
 				ensemble_representations:bool=False, return_representations:bool=False):
-		raise Exception(NotImplemented)
+		num_ensemble = torch.Tensor([ensembled_batch['seq_length'].size(0)])
+		if not ensemble_representations:
+			assert ensembled_batch['seq_length'].size(0) == 1
+
+		batch0 = {k:v[0] for k,v in ensembled_batch.items()}
+		non_ensembled_batch.update(batch0)
+		representations = self.evoformer_module(batch0, is_training)
+
+		# msa_representations = representations['msa']
+		# del representations['msa']
+
+		if ensemble_representations:
+			raise(NotImplementedError())
+
+		batch = batch0
+
+		total_loss = 0.0
+		ret = {'representations':representations}
+		def loss(module, head_config, ret, name, filter_ret:bool=True):
+			if filter_ret:
+				value = ret[name]
+			else:
+				value = ret
+			loss_output = module.loss(value, batch)
+			ret[name].update(loss_output)
+			loss = head_config.weight * ret[name]['loss']
+
+		for priority, name in self.head_order:
+			module, head_config = self.heads[name]
+			ret[name] = module(representations, batch, is_training)
+			if 'representations' in ret[name]:
+				representations.update(ret[name].pop('representations'))
+			if self.compute_loss:
+				if name in ('predicted_aligned_error', 'predicted_lddt'):
+					total_loss += loss(module, head_config, ret, name, filter_ret=False)
+				else:
+					total_loss += loss(module, head_config, ret, name, filter_ret=True)
+		
+		if self.compute_loss:
+			return ret, total_loss
+		else:
+			return ret
+		
+		
 
 class AlphaFold(nn.Module):
 	def __init__(self, config):
 		super().__init__()
 		self.config = config
-
 		self.impl = AlphaFoldIteration(self.config)
 
 	def forward(self, batch, is_training, 
 				compute_loss=False, ensemble_representations=False, return_representations=False):
-		raise Exception(NotImplemented)
-		# print(batch['aatype'])
-		# batch_size, num_residues = batch['aatype']
+		raise(Exception(NotImplemented))

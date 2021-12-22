@@ -1,14 +1,14 @@
-from numpy import broadcast
-from numpy.lib.arraysetops import isin
+import functools
 import torch
 from torch import nn
+import torch.nn.functional as F
 from typing import Sequence, Tuple, Dict
 import numpy as np
 from math import sqrt
 from collections import namedtuple
-from alphafold.Common import residue_constants
 
-from alphafold.Model.affine import QuatAffine, vecs_to_tensor 
+from alphafold.Common import residue_constants
+from alphafold.Model.affine import QuatAffine, rigids_apply, vecs_to_tensor, rigids_from_tensor_flat12, vecs_from_tensor
 from alphafold.Model import protein
 
 class InvariantPointAttention(nn.Module):
@@ -69,7 +69,6 @@ class InvariantPointAttention(nn.Module):
 		print(f'Loading trainable_point_weights: {d.shape} -> {self.trainable_point_weights.size()}')
 		self.trainable_point_weights.data.copy_(torch.from_numpy(d))
 		
-
 	def forward(self, inputs_1d:torch.Tensor, inputs_2d:torch.Tensor, mask:torch.Tensor, affine) -> torch.Tensor:
 		q_scalar = self.q_scalar(inputs_1d)
 		q_scalar = q_scalar.view(self.num_res, self.num_head, self.num_scalar_qk)
@@ -446,21 +445,21 @@ class StructureModule(nn.Module):
 			violation_metrics = self.compute_violation_metrics(batch, atom14_pred_positions, value['violations'])
 			ret['metrics'].update(violation_metrics)
 		
-		backbone_loss(ret, batch, value, self.config)
+		self.backbone_loss(ret, batch, value, self.config)
 
 		if not('renamed_atom14_gt_positions' in value):
 			value.update(self.compute_renamed_ground_truth(batch, atom14_pred_positions))
-		sc_loss = sidechain_loss(batch, value, self.config)
+		sc_loss = self.sidechain_loss(batch, value, self.config)
 
 		ret['loss'] = ((1.0 - self.config.sidechain.weight_frac)*ret['loss'] + self.config.sidechain.weight_frac*sc_loss['loss'])
 		ret['sidechain_fape'] = sc_loss['loss']
 
-		supervised_chi_loss(ret, batch, value, self.config)
+		self.supervised_chi_loss(ret, batch, value, self.config)
 
 		if self.config.structural_violation_loss_weight:
 			if not('violations' in value):
 				value['violations'] = self.find_structural_violations(batch, atom14_pred_positions)
-			structural_violation_loss(ret, batch, value, self.config)
+			self.structural_violation_loss(ret, batch, value, self.config)
 
 	def compute_renamed_ground_truth(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor)->Dict[str, torch.Tensor]:
 		"""
@@ -483,7 +482,7 @@ class StructureModule(nn.Module):
 				'renamed_atom14_gt_positions': renamed_atom14_gt_positions,
 				'renamed_atom14_exists': renamed_atom14_gt_mask}
 
-	def find_structural_violations(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor):
+	def find_structural_violations(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor)->Dict[str, torch.Tensor]:
 		"""
 		https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/folding.py#L734
 		"""
@@ -540,10 +539,8 @@ class StructureModule(nn.Module):
 					'per_atom_violations': within_residue_violations['per_atom_violations']},  # (N, 14),
 				'total_per_residue_violations_mask': per_residue_violations_mask}  # (N)
 	
-	def compute_violation_metrics(self, 
-		batch:Dict[str, torch.Tensor], 
-		atom14_pred_positions:torch.Tensor, 
-		violations:Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+	def compute_violation_metrics(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor, 
+								violations:Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
 
 		extreme_ca_ca_violations = protein.extreme_ca_ca_distance_violations(
 			pred_atom_positions=atom14_pred_positions, 
@@ -565,3 +562,96 @@ class StructureModule(nn.Module):
 				violations['total_per_residue_violations_mask'] * \
 					batch['seq_mask'])/(torch.sum(batch['seq_mask'])+1e-10),
 			}
+
+	def structural_violation_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]) -> None:
+		violations = value['violations']
+		num_atoms = torch.sum(batch['atom14_atom_exists']).to(dtype=torch.float32)
+		ret['loss'] += (self.config.structural_violation_loss_weight *
+					violations['between_residues']['bonds_c_n_loss_mean'] +
+					violations['between_residues']['angles_ca_c_n_loss_mean'] +
+					violations['between_residues']['angles_c_n_ca_loss_mean'] +
+					torch.sum(	violations['between_residues']['clashes_per_atom_loss_sum'] +
+								violations['within_residues']['per_atom_loss_sum'])/(1e-6 + num_atoms)
+					)
+
+	def backbone_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]) -> None:
+		affine_trajectory = QuatAffine.from_tensor(value['traj'])
+		rigid_trajectory = affine_trajectory.to_rigids()
+
+		gt_trajectory = QuatAffine.from_tensor(batch['backbone_affine_tensor'])
+		gt_rigid = gt_trajectory.to_rigids()
+		backbone_mask = batch['backbone_affine_mask']
+		
+		fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
+						l1_clamp_distance=self.config.fape.clamp_distance,
+						length_scale=self.config.fape.loss_unit_distance)
+		#TODO
+		#fape_loss_fn = jax.vmap(fape_loss_fn, (0, None, None, 0, None, None))
+		fape_loss = fape_loss_fn(rigid_trajectory, gt_rigid, backbone_mask,
+								rigid_trajectory.trans, gt_rigid.trans, backbone_mask)
+
+		if 'use_clamped_fape' in batch:
+			use_clamped_fape = torch.Tensor(batch['use_clamped_fape'], dtype=torch.float32)
+			unclamped_fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
+						l1_clamp_distance=None,
+						length_scale=self.config.fape.loss_unit_distance)
+			#TODO
+			#unclamped_fape_loss_fn = jax.vmap(unclamped_fape_loss_fn, (0, None, None, 0, None, None))
+			fape_loss_unclamped = fape_loss_fn(	rigid_trajectory, gt_rigid, backbone_mask,
+												rigid_trajectory.trans, gt_rigid.trans, backbone_mask)
+
+		fape_loss = fape_loss*use_clamped_fape + fape_loss_unclamped*(1.0-use_clamped_fape)
+		ret['fape'] = fape_loss[-1]
+		ret['loss'] += torch.mean(fape_loss)
+
+	def sidechain_loss(self, value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+		alt_naming_is_better = value['alt_naming_is_better']
+		renamed_gt_frames = (1.0-alt_naming_is_better[:, None, None])*batch['rigidgroups_gt_frames'] + \
+			alt_naming_is_better[:,None,None]*batch['rigidgroups_alt_gt_frames']
+		flat_gt_frames = rigids_from_tensor_flat12(renamed_gt_frames.view(-1, 12))
+		flat_frames_mask = batch['rigidgroups_gt_exists'].view(-1)
+		flat_gt_positions = vecs_from_tensor(value['renamed_atom14_gt_positions'].view(-1,3))
+		flat_positions_mask = value['renamed_atom14_gt_exists'].view(-1)
+
+		pred_frames = value['sidechains']['frames']
+		pred_positions = value['sidechains']['atom_pos']
+		flat_pred_frames = rigids_apply(lambda x: x[-1].view(-1), pred_frames)
+		flat_pred_positions = rigids_apply(lambda x: x[-1].view(-1), pred_positions)
+		fape = protein.frame_aligned_point_error(
+			pred_frames=flat_pred_frames, target_frames=flat_gt_frames, frames_mask=flat_frames_mask,
+			pred_positions=flat_pred_positions, target_positions=flat_gt_positions, positions_mask=flat_positions_mask,
+			l1_clamp_distance=self.config.sidechain.atom_clamp_distance,
+			length_scale=self.config.sidechain.length_scale
+		)
+		return {'fape': fape, 'loss':fape}
+
+	def supervised_chi_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]):
+		eps = 1e-6
+		sequence_mask = batch['sequence_mask']
+		num_res = sequence_mask.size(0)
+		chi_mask = batch['chi_mask'].to(dtype=torch.float32)
+		pred_angles = value['sidechains']['angles_sin_cos'].view(-1, num_res, 7, 2)
+		pred_angles = pred_angles[:, :, 3:, :]
+
+		residue_type_one_hot = F.one_hot(batch['aatype'], residue_constants.restype_num+1).to(dtype=torch.float32)[None]
+		chi_pi_periodic = torch.einsum('ijk, kl -> ijl', residue_type_one_hot, 
+										torch.Tensor(residue_constants.chi_pi_periodic))
+		true_chi = batch['chi_angles'][None]
+		sin_cos_true_chi = torch.stack([torch.sin(true_chi), torch.cos(true_chi)], dim=-1)
+
+		shifted_mask = (1 - 2*chi_pi_periodic)[...,None]
+		sq_chi_error = torch.sum(torch.square(sin_cos_true_chi - pred_angles), dim=-1)
+		sq_chi_error_shifted = torch.sum(torch.square(shifted_mask * sin_cos_true_chi - pred_angles), dim=-1)
+		sq_chi_error = torch.minimum(sq_chi_error, sq_chi_error_shifted)
+
+		sq_chi_loss = torch.sum((chi_mask[None])*sq_chi_error)/(torch.sum(chi_mask) + eps)
+		ret['chi_loss'] = sq_chi_loss
+		ret['loss'] += self.config.chi_weight * sq_chi_loss
+
+		unnormed_angles = value['sidechains']['unnormalized_angles_sin_cos'].view(-1, num_res, 7, 2)
+		angle_norm = torch.sqrt(torch.sum(torch.square(unnormed_angles), dim=-1) + eps)
+		norm_error = 1.0 -angle_norm
+		angle_norm_loss = torch.sum(sequence_mask[None, :, None]*norm_error)/torch.sum(sequence_mask)
+		
+		ret['angle_norm_loss'] = angle_norm_loss
+		ret['loss'] += self.config.angle_norm_weight * angle_norm_loss

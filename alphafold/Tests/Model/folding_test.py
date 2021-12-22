@@ -7,7 +7,12 @@ import numpy as np
 from alphafold.Model import model_config
 import numpy as np
 
-from alphafold.Model.structure import InvariantPointAttention, MultiRigidSidechain, FoldIteration, StructureModule
+from alphafold.Model.Heads.structure import InvariantPointAttention, MultiRigidSidechain, FoldIteration, StructureModule
+from alphafold.Model.Heads.lddt import PredictedLDDTHead
+from alphafold.Model.Heads.resolved import ExperimentallyResolvedHead
+from alphafold.Model.Heads.masked_msa import MaskedMSAHead
+from alphafold.Model.Heads.distogram import DistogramHead
+from alphafold.Model.Heads.aligned_error import PredictedAlignedErrorHead
 from alphafold.Model.protein import torsion_angles_to_frames, frames_and_literature_positions_to_atom14_pos
 from alphafold.Model import affine
 from alphafold.Model.affine import QuatAffine
@@ -104,17 +109,6 @@ def StructureModuleTest(args, config, global_config):
 	conf = config.model.heads.structure_module
 	representations = feat['representations']
 	batch = feat['batch']
-
-	for key in params.keys():
-		print(key)
-		for param in params[key].keys():
-			print('\t' + param)
-	
-	for key in representations.keys():
-		print(key, representations[key].dtype)
-	
-	for key in batch.keys():
-		print(key, batch[key].dtype)
 	
 	attn = StructureModule(conf, global_config, 
 						num_res=representations['single'].shape[-2],
@@ -123,6 +117,86 @@ def StructureModuleTest(args, config, global_config):
 						)
 						
 	attn.load_weights_from_af2(params, rel_path='structure_module')
+	
+	this_res = attn(representations, batch)
+	print(check_recursive(this_res, res))
+
+def PredictedLDDTHeadTest(args, config, global_config):
+	print('PredictedLDDTHeadTest')
+	feat, params, res = load_data(args, 'PredictedLDDTHead')
+	conf = config.model.heads.predicted_lddt
+	representations = feat['representations']
+	batch = feat['batch']
+	
+	attn = PredictedLDDTHead(conf, global_config, 
+						num_feat_1d=representations['single'].shape[-1]
+						)
+						
+	attn.load_weights_from_af2(params, rel_path='predicted_lddt_head')
+	
+	this_res = attn(representations, batch)
+	print(check_recursive(this_res, res))
+
+def ExperimentallyResolvedHeadTest(args, config, global_config):
+	print('ExperimentallyResolvedHeadTest')
+	feat, params, res = load_data(args, 'ExperimentallyResolvedHead')
+	conf = config.model.heads.experimentally_resolved
+	representations = feat['representations']
+	batch = feat['batch']
+	
+	attn = ExperimentallyResolvedHead(conf, global_config, 
+									num_feat_1d=representations['single'].shape[-1]
+									)
+						
+	attn.load_weights_from_af2(params, rel_path='experimentally_resolved_head')
+	
+	this_res = attn(representations, batch)
+	print(check_recursive(this_res, res))
+
+def MaskedMSAHeadTest(args, config, global_config):
+	print('MaskedMSAHeadTest')
+	feat, params, res = load_data(args, 'MaskedMSAHead')
+	conf = config.model.heads.masked_msa
+	representations = feat['representations']
+	batch = feat['batch']
+	
+	attn = MaskedMSAHead(conf, global_config, 
+						num_feat_2d=representations['msa'].shape[-1]
+						)
+						
+	attn.load_weights_from_af2(params, rel_path='masked_msa_head')
+	
+	this_res = attn(representations, batch)
+	print(check_recursive(this_res, res))
+
+def DistogramHeadTest(args, config, global_config):
+	print('DistogramHeadTest')
+	feat, params, res = load_data(args, 'DistogramHead')
+	conf = config.model.heads.distogram
+	representations = feat['representations']
+	batch = feat['batch']
+	
+	attn = DistogramHead(conf, global_config, 
+						num_feat_2d=representations['pair'].shape[-1]
+						)
+						
+	attn.load_weights_from_af2(params, rel_path='distogram_head')
+	
+	this_res = attn(representations, batch)
+	print(check_recursive(this_res, res))
+
+def PredictedAlignedErrorHeadTest(args, config, global_config):
+	print('PredictedAlignedErrorHeadTest')
+	feat, params, res = load_data(args, 'PredictedAlignedErrorHead')
+	conf = config.model.heads.predicted_aligned_error
+	representations = feat['representations']
+	batch = feat['batch']
+	
+	attn = PredictedAlignedErrorHead(conf, global_config, 
+						num_feat_2d=representations['pair'].shape[-1]
+						)
+						
+	attn.load_weights_from_af2(params, rel_path='predicted_aligned_error_head')
 	
 	this_res = attn(representations, batch)
 	print(check_recursive(this_res, res))
@@ -141,4 +215,9 @@ if __name__=='__main__':
 	# test_frames_and_literature_positions_to_atom14_pos(args)
 	# MultiRigidSidechainTest(args, config, global_config)
 	# FoldIterationTest(args, config, global_config)
-	StructureModuleTest(args, config, global_config)
+	# StructureModuleTest(args, config, global_config)
+	# PredictedLDDTHeadTest(args, config, global_config)
+	# ExperimentallyResolvedHeadTest(args, config, global_config)
+	# MaskedMSAHeadTest(args, config, global_config)
+	# DistogramHeadTest(args, config, global_config)
+	PredictedAlignedErrorHeadTest(args, config, global_config)

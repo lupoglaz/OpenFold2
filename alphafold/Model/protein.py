@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from alphafold.Model import affine
 from alphafold.Common import residue_constants
-from typing import Dict
+from typing import Dict, Optional
 
 
 def torsion_angles_to_frames(aatype:torch.Tensor, backb_to_global:affine.Rigids, torsion_angles_sin_cos:torch.Tensor) -> affine.Rigids:
@@ -281,3 +281,31 @@ def extreme_ca_ca_distance_violations(
 	violations = (ca_ca_distance - residue_constants.ca_ca) > max_angstrom_tolerance
 	mask = this_ca_mask*next_ca_mask*has_no_gap_mask
 	return torch.sum(violations*mask)/(torch.sum(mask)+1e-10)
+
+def frame_aligned_point_error(
+		pred_frames:affine.Rigids, target_frames:affine.Rigids, frames_mask:torch.Tensor,
+		pred_positions:affine.Vecs, target_positions:affine.Vecs, positions_mask:torch.Tensor,
+		length_scale:float, l1_clamp_distance:Optional[float]=None, epsilon=1e-4 
+	) -> torch.Tensor:
+	assert pred_frames.rot.xx.ndimension() == 1
+	assert target_frames.rot.xx.ndimension() == 1
+	assert frames_mask.ndimension() == 1
+	assert pred_positions.x.ndimension() == 1
+	assert target_positions.x.ndimension() == 1
+	assert positions_mask.ndimension() == 1
+
+	local_pred_pos = affine.rigids_mul_vecs(
+							affine.rigids_apply(lambda r: r[:, None], affine.rigids_invert(pred_frames)),
+							affine.rigids_apply(lambda x: x[None, :], pred_positions))
+
+	local_target_pos = affine.rigids_mul_vecs(
+							affine.rigids_apply(lambda r: r[:, None], affine.rigids_invert(target_frames)),
+							affine.rigids_apply(lambda x: x[None, :], target_positions))
+
+	error_dist = torch.sqrt(affine.vecs_squared_dist(local_pred_pos, local_target_pos) + epsilon)
+	if l1_clamp_distance:
+		error_dist = torch.clamp(error_dist, min=0.0, max=l1_clamp_distance)
+	
+	normed_error = (error_dist/length_scale)*frames_mask.unsqueeze(dim=-1)*positions_mask.unsqueeze(dim=-2)
+	normalization_factor = torch.sum(frames_mask, dim=-1) * torch.sum(positions_mask, dim=-1)
+	return torch.sum(normed_error, dim=(-2, -1)) / (epsilon + normalization_factor)
