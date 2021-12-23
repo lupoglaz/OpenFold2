@@ -1,80 +1,70 @@
 import argparse
-import subprocess
 from pathlib import Path
 import pickle
 import numpy as np
 from ...Data import pipeline
-from alphafold.Model import AlphaFold, AlphaFoldFeatures, model_config
+
 import torch
-import numpy as np
-import matplotlib.pylab as plt
+from alphafold.Tests.Model.quaternion_test import convert, check_recursive
+from alphafold.Model.alphafold import AlphaFoldIteration, EmbeddingsAndEvoformer
+from alphafold.Model import model_config
 
-from alphafold.Model.embedders import InputEmbeddings, RecycleEmbedding, ExtraMSAEmbedding
 
-def InputEmbeddingTest(input, output, params, config):
-	target_feat_dim = input['target_feat'].shape[-1]
-	msa_feat_dim = input['msa_feat'].shape[-1]
-	pair_emb_dim = config.model.embeddings_and_evoformer.pair_channel
-	msa_emb_dim = config.model.embeddings_and_evoformer.msa_channel
-	relpos_wind = config.model.embeddings_and_evoformer.max_relative_feature
-	
-	ie = InputEmbeddings(target_feat_dim=target_feat_dim, 
-						msa_feat_dim=msa_feat_dim, 
-						pair_emb_dim=pair_emb_dim, 
-						msa_emb_dim=msa_emb_dim, 
-						relpos_wind=relpos_wind)
+def load_data(args, filename):
+	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
+		fnargs1, fnargs2, params, res = pickle.load(f)
+	return convert(fnargs1), convert(fnargs2), params, convert(res)
 
-	ie.load_weights_from_af2(params)
+def AlphaFoldIterationTest(args, config, global_config):
+	ensembled_batch, non_ensembled_batch, params, res = load_data(args, 'AlphaFoldIteration')
+	conf = config.model
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param + '  ' + str(params[key][param].shape))
+	for key in non_ensembled_batch.keys():
+		print(key, non_ensembled_batch[key].shape)
 
-	msa_act, pair_act = ie( torch.from_numpy(input['target_feat']), 
-							torch.from_numpy(input['residue_index']), 
-							torch.from_numpy(input['msa_feat']))
-	
-	print(msa_act.size(), pair_act.size())
-	return msa_act, pair_act
-	
+	conf.embeddings_and_evoformer.recycle_pos = False
+	conf.embeddings_and_evoformer.recycle_features = False
+	conf.embeddings_and_evoformer.template.enabled = False
+	conf.embeddings_and_evoformer.evoformer_num_block = 1
+	conf.embeddings_and_evoformer.extra_msa_stack_num_block = 1
+	conf.num_recycle = 0
+	conf.resample_msa_in_recycling = False
+	global_config.deterministic = True
 
-def RecycleEmbeddingTest(input, output, params, config):
-	msa_emb_dim = config.model.embeddings_and_evoformer.msa_channel
-	pair_emb_dim = config.model.embeddings_and_evoformer.pair_channel
-	min_bin = config.model.embeddings_and_evoformer.prev_pos.min_bin
-	max_bin = config.model.embeddings_and_evoformer.prev_pos.max_bin
-	num_bins = config.model.embeddings_and_evoformer.prev_pos.num_bins
-	
-	re = RecycleEmbedding(msa_emb_dim, pair_emb_dim, min_bin, max_bin, num_bins)
-	re.load_weights_from_af2(params)
-
-def ExtraMSAEmbeddingTest(input, output, params, config):
-	print(input['extra_msa'].shape)
-	msa_feat_dim = input['extra_msa'].shape[-1]
-	msa_emb_dim = config.model.embeddings_and_evoformer.msa_channel
-
-	eme = ExtraMSAEmbedding(msa_dim=msa_feat_dim, msa_emb_dim=msa_emb_dim)
-	eme.load_weights_from_af2(params)
-
-	extra_msa_act = eme(input['extra_msa'])
-	print(extra_msa_act.size())
-	return extra_msa_act
+	attn = AlphaFoldIteration(conf, global_config,
+								num_res=non_ensembled_batch['target_feat'].shape[-2],
+								target_dim=non_ensembled_batch['target_feat'].shape[-1], 
+								msa_dim=non_ensembled_batch['msa_feat'].shape[-1],
+								extra_msa_dim=25)
+	attn.load_weights_from_af2(params, rel_path='alphafold_iteration')
+	with torch.no_grad():
+		this_res = attn(ensembled_batch, non_ensembled_batch, is_training=False)
+	check_recursive(res, this_res)
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-model_name', default='model_1', type=str)
+	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
 	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
 	parser.add_argument('-output_dir', default='/media/lupoglaz/AlphaFold2Output', type=str)
 		
 	args = parser.parse_args()
 	
-	params = np.load(Path(args.data_dir)/Path('params')/Path(f'params_{args.model_name}.npz'))
-	for k in params.keys():
-		print(k)
-	proc_features_path = Path(args.output_dir)/Path('T1024')/Path('proc_features.pkl')
-	with open(proc_features_path, 'rb') as f:
-		af2_proc_features = pickle.load(f)
+	# params = np.load(Path(args.data_dir)/Path('params')/Path(f'params_{args.model_name}.npz'))
+	# for k in params.keys():
+	# 	print(k)
+	# proc_features_path = Path(args.output_dir)/Path('T1024')/Path('proc_features.pkl')
+	# with open(proc_features_path, 'rb') as f:
+	# 	af2_proc_features = pickle.load(f)
 	
 	config = model_config(args.model_name)
+	global_config = config.model.global_config
+	AlphaFoldIterationTest(args, config, global_config)
 
-	# msa_act, pair_act = InputEmbeddingTest(af2_proc_features, None, params, config)
-	# RecycleEmbeddingTest( None, None, params, config)
-	ExtraMSAEmbeddingTest(af2_proc_features, None, params, config)
+
+	
 	
 	

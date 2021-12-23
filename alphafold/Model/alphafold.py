@@ -202,23 +202,26 @@ class AlphaFoldIteration(nn.Module):
 	"""
 	HIGH = 1
 	LOW = 2
-	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
+	def __init__(self, config, global_config, num_res:int, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
 		super().__init__()
 		self.config = config
 		self.global_config = global_config
 		self.compute_loss = compute_loss
 
-		self.evoformer_module = EmbeddingsAndEvoformer(config.embeddings_and_evoformer, global_config, 
+		self.evoformer_module = EmbeddingsAndEvoformer(	config.embeddings_and_evoformer, global_config, 
 														target_dim=target_dim,
 														msa_dim=msa_dim,
 														extra_msa_dim=extra_msa_dim)
+		evo_conf = config.embeddings_and_evoformer
 		head_dict = {
-			'masked_msa': (MaskedMSAHead, self.LOW),
-			'distogram': (DistogramHead, self.LOW),
-			'structure_module': (functools.partial(StructureModule, compute_loss=compute_loss), self.HIGH),
-			'predicted_lddt': (PredictedLDDTHead, self.LOW),
-			'predicted_aligned_error': (PredictedAlignedErrorHead, self.LOW),
-			'experimentally_resolved': (ExperimentallyResolvedHead, self.LOW)
+			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),
+			'distogram': (functools.partial(DistogramHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
+			'structure_module': (functools.partial(StructureModule, num_res=num_res, 
+								num_feat_1d=evo_conf.seq_channel, num_feat_2d=evo_conf.pair_channel, 
+								compute_loss=compute_loss), self.HIGH),
+			'predicted_lddt': (functools.partial(PredictedLDDTHead, num_feat_1d=evo_conf.seq_channel), self.LOW),
+			'predicted_aligned_error': (functools.partial(PredictedAlignedErrorHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
+			'experimentally_resolved': (functools.partial(ExperimentallyResolvedHead, num_feat_1d=evo_conf.seq_channel), self.LOW)
 		}
 		self.heads = {}
 		self.head_order = []
@@ -228,16 +231,20 @@ class AlphaFoldIteration(nn.Module):
 			head_factory, priority = head_dict[head_name]
 			self.head_order.append((priority, head_name))
 			self.heads[head_name] = (head_config, head_factory(head_config, global_config))
-		self.head_order.sort(lambda x: x[0])
+		self.head_order.sort(key=lambda x: x[0])
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold_iteration', ind:int=None):
 		for name, (config, module) in self.heads.items():
-			module.load_weights_from_af2(data, rel_path=f'{rel_path}/{name}', ind=ind)
-		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer', ind=ind)
+			if name != 'structure_module':
+				load_name = f'{name}_head'
+			else:
+				load_name = name
+			module.load_weights_from_af2(data, rel_path=f'{rel_path}/{load_name}', ind=ind)
+		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer')
 
 	def forward(self, ensembled_batch, non_ensembled_batch, 
-				is_training:bool=False, 
-				ensemble_representations:bool=False, return_representations:bool=False):
+				is_training:bool=False, ensemble_representations:bool=False, return_representations:bool=False):
+		
 		num_ensemble = torch.Tensor([ensembled_batch['seq_length'].size(0)])
 		if not ensemble_representations:
 			assert ensembled_batch['seq_length'].size(0) == 1
@@ -266,7 +273,7 @@ class AlphaFoldIteration(nn.Module):
 			loss = head_config.weight * ret[name]['loss']
 
 		for priority, name in self.head_order:
-			module, head_config = self.heads[name]
+			head_config, module = self.heads[name]
 			ret[name] = module(representations, batch, is_training)
 			if 'representations' in ret[name]:
 				representations.update(ret[name].pop('representations'))
@@ -289,6 +296,5 @@ class AlphaFold(nn.Module):
 		self.config = config
 		self.impl = AlphaFoldIteration(self.config)
 
-	def forward(self, batch, is_training, 
-				compute_loss=False, ensemble_representations=False, return_representations=False):
+	def forward(self, batch, is_training:bool=False, compute_loss=False, ensemble_representations=False, return_representations=False):
 		raise(Exception(NotImplemented))

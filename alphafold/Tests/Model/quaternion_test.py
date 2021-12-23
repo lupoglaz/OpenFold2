@@ -31,7 +31,8 @@ def check_success(this_res, res):
 	mean_err = torch.mean(err).item()
 	return err.sum(), max_err, mean_err
 
-def check_recursive(a, b, depth:int=0, key=None):
+def check_recursive(a, b, depth:int=0, key=None, tol_max:float=1e-3, tol_mean=1e-3):
+	str_depth = ''.join(['--' for i in range(depth)])
 	if isinstance(a, tuple) or isinstance(a, list):
 		errs = []
 		max_errs = []
@@ -41,8 +42,12 @@ def check_recursive(a, b, depth:int=0, key=None):
 			errs.append(err_i)
 			max_errs.append(max_err_i)
 			mean_errs.append(mean_err_i)
-		
-		print(i, np.sum(errs), max(max_errs), np.mean(mean_errs))
+			succ = (max_err_i<tol_max) and (mean_err_i<tol_mean)
+			if succ:
+				print(f'{str_depth}>{i}: success = {succ}')
+			else:
+				print(f'{str_depth}>{i}: success = {succ}:\t{err_i}\t{max_err_i}\t{mean_err_i}')
+
 		return np.sum(errs), max(max_errs), np.mean(mean_errs)
 	
 	if isinstance(a, dict):
@@ -54,8 +59,12 @@ def check_recursive(a, b, depth:int=0, key=None):
 			errs.append(err_i)
 			max_errs.append(max_err_i)
 			mean_errs.append(mean_err_i)
+			succ = (max_err_i<tol_max) and (mean_err_i<tol_mean)
+			if succ:
+				print(f'{str_depth}>{key}: success = {succ}')
+			else:
+				print(f'{str_depth}>{key}: success = {succ}:\t{err_i}\t{max_err_i}\t{mean_err_i}')
 
-		print(key, np.sum(errs), max(max_errs), np.mean(mean_errs))
 		return np.sum(errs), max(max_errs), np.mean(mean_errs)
 	
 	if isinstance(a, np.ndarray):

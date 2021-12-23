@@ -231,6 +231,8 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
+	# create_extra_msa_features_test(args, config, global_config)
+	
 	# AttentionTest(args, config, global_config)
 	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
@@ -242,9 +244,11 @@ if __name__=='__main__':
 	# TransitionTest(args, config, global_config)
 	# EvoformerIterationTest1(args, config, global_config)
 	# EvoformerIterationTest2(args, config, global_config)
+	
 	with torch.no_grad():
 		EmbeddingsAndEvoformerTest(args, config, global_config)
-	# create_extra_msa_features_test(args, config, global_config)
+	
+	
 
 	
 
