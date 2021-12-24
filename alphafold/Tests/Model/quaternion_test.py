@@ -72,6 +72,11 @@ def check_recursive(a, b, depth:int=0, key=None, tol_max:float=1e-3, tol_mean=1e
 	
 	if isinstance(b, np.ndarray):
 		b = torch.from_numpy(b)
+
+	if isinstance(a, float) or isinstance(a, int):
+		a = torch.Tensor([a])
+	if isinstance(b, float) or isinstance(b, int):
+		b = torch.Tensor([b])
 	
 	return check_success(a, b)
 

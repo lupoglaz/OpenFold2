@@ -291,10 +291,86 @@ class AlphaFoldIteration(nn.Module):
 		
 
 class AlphaFold(nn.Module):
-	def __init__(self, config):
+	def __init__(self, config, num_res:int, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
 		super().__init__()
 		self.config = config
-		self.impl = AlphaFoldIteration(self.config)
+		self.global_config = config.global_config
+		self.impl = AlphaFoldIteration(	self.config, self.global_config, 
+										num_res=num_res, 
+										target_dim=target_dim, 
+										msa_dim=msa_dim, 
+										extra_msa_dim=extra_msa_dim,
+										compute_loss=compute_loss)
+	
+	def load_weights_from_af2(self, data, rel_path: str='alphafold', ind:int=None):
+		self.impl.load_weights_from_af2(data, rel_path=f'{rel_path}/alphafold_iteration')
 
 	def forward(self, batch, is_training:bool=False, compute_loss=False, ensemble_representations=False, return_representations=False):
-		raise(Exception(NotImplemented))
+		batch_size, num_residues = batch['aatype'].shape
+		inf = torch.Tensor([float('+Inf')])
+
+		def get_prev(ret):
+			return { 'prev_pos': ret['structure_module']['final_atom_positions'].detach(),
+					'prev_msa_first_row': ret['representations']['msa_first_row'].detach(),
+					'prev_pair': ret['representations']['pair'].detach()}
+
+		def do_call(prev, recycle_idx, compute_loss:bool=compute_loss):
+			if self.config.resample_msa_in_recycling:
+				num_ensemble = batch_size // (self.config.num_recycle + 1)
+				def slice_recycle_idx(x):
+					start, end = recycle_idx * num_ensemble, (recycle_idx+1) * num_ensemble
+					start_corr = min(start, x.size(0) - num_ensemble)
+					end_corr = min(x.size(0), end)
+					return x[start_corr:end_corr,...]
+				ensembled_batch = {k: slice_recycle_idx(v) for k, v in batch.items()}
+			else:
+				num_ensemble = batch_size
+				ensembled_batch = batch
+			
+			non_ensembled_batch = prev
+			return self.impl(ensembled_batch, non_ensembled_batch, 
+							is_training=is_training, 
+							ensemble_representations=ensemble_representations)
+
+		if self.config.num_recycle:
+			emb_config = self.config.embeddings_and_evoformer
+			prev = {'prev_pos': torch.zeros(num_residues, residue_constants.atom_type_num, 3),
+					'prev_msa_first_row':torch.zeros(num_residues, emb_config.msa_channel),
+					'prev_pair':torch.zeros(num_residues, num_residues, emb_config.pair_channel)}
+			if 'iter_num_recycling' in 	batch:
+				num_iter = batch['iter_num_recycling'][0].item()
+				num_iter = min(num_iter, self.config.num_recycle)
+			else:
+				num_iter = self.config.num_recycle
+
+			def pw_dist(a):
+				a_norm = torch.square(a).sum(dim=-1)
+				return torch.square(torch.abs(a_norm[:,None] + a_norm[None,:] - 2 * a @ a.T))
+
+			for i in range(num_iter):
+				with torch.no_grad():
+					_prev = get_prev(do_call(prev, recycle_idx=i, compute_loss=False))
+					ca, _ca = prev['prev_pos'][:, 1, :], _prev['prev_pos'][:, 1, :]
+					_tol = torch.sqrt(torch.square(pw_dist(ca) - pw_dist(_ca)).mean())
+					prev = _prev
+					tol = _tol
+					recycles = i+1
+
+				if _tol < self.config.recycle_tol:
+					break
+		else:
+			prev = {}
+			num_iter = 0
+			recycles, tol = 0, inf
+
+		ret = do_call(prev=prev, recycle_idx=num_iter)
+		
+		if compute_loss:
+			ret = ret[0], [ret[1]]
+		
+		if not return_representations:
+			del (ret[0] if compute_loss else ret)['representations']
+		
+		return ret, (recycles, tol)
+				
+
