@@ -108,10 +108,12 @@ class EmbeddingsAndEvoformer(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1561
 	"""
-	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int) -> None:
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int,
+				clear_cache:bool=True) -> None:
 		super(EmbeddingsAndEvoformer, self).__init__()
 		self.config = config
 		self.global_config = global_config
+		self.clear_cache = clear_cache
 		
 		self.input_emb = InputEmbeddings(config, global_config, msa_dim=msa_dim, target_dim=target_dim)
 		self.recycle_emb = RecycleEmbedding(config, global_config)
@@ -171,11 +173,16 @@ class EmbeddingsAndEvoformer(nn.Module):
 		extra_masks = {'msa':batch['extra_msa_mask'], 'pair': mask_2d}
 		for extra_msa_iteration in self.extra_msa_stack:
 			extra_act = extra_msa_iteration(activations=extra_act, masks=extra_masks, is_training=is_training)
+			# https://github.com/aqlaboratory/openfold/blob/e1c7c9e7cf353b068c3df7b8a23803f45dfea75d/openfold/model/evoformer.py#L380
+			if self.clear_cache:
+				torch.cuda.empty_cache()
 
 		evoformer_act = {'msa': inp_msa_act, 'pair': extra_act['pair']}
 		evoformer_masks = {'msa': batch['msa_mask'], 'pair': mask_2d}
 		for evoformer_iteration in self.evoformer_stack:
 			evoformer_act = evoformer_iteration(activations=evoformer_act, masks=evoformer_masks, is_training=is_training)
+			if self.clear_cache:
+				torch.cuda.empty_cache()
 
 		msa_act = evoformer_act['msa']
 		pair_act = evoformer_act['pair']
