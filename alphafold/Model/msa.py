@@ -1,7 +1,7 @@
-from numpy import broadcast
 import torch
 from torch import nn
 from typing import Sequence, Tuple
+from alphafold.Model.Utils.weights_loading import load_params
 
 class Attention(nn.Module):
 	"""
@@ -45,17 +45,7 @@ class Attention(nn.Module):
 		if self.config.gating:
 			modules.extend([self.gating_w, self.gating_b])
 			names.extend(['gating_w', 'gating_b'])
-		for module, name in zip(modules, names):
-			if rel_path is None:
-				d = data[f'{name}']
-			else:
-				if ind is None:
-					d = data[f'{rel_path}'][f'{name}']
-				else:
-					d = data[f'{rel_path}'][f'{name}'][ind,...]
-			print(f'Loading {name}: {d.shape} -> {module.size()}')
-			module.data.copy_(torch.from_numpy(d))
-			
+		load_params(data, modules, names, rel_path=rel_path, ind=ind)
 
 	def forward(self, q_data: torch.Tensor, m_data: torch.Tensor, bias: torch.Tensor, nonbatched_bias: torch.Tensor=None) -> torch.Tensor:
 		"""

@@ -16,14 +16,8 @@ from alphafold.Model.Heads.aligned_error import PredictedAlignedErrorHead
 from alphafold.Model.protein import torsion_angles_to_frames, frames_and_literature_positions_to_atom14_pos
 from alphafold.Model import affine
 from alphafold.Model.affine import QuatAffine
-from alphafold.Tests.Model.quaternion_test import load_data as quat_load_data
-from alphafold.Tests.Model.quaternion_test import convert, check_recursive
+from alphafold.Tests.utils import load_data, check_recursive
 
-def load_data(args, filename):
-	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
-		fnargs, params, res = pickle.load(f)
-	torch_args = convert(fnargs)
-	return convert(fnargs), params, convert(res)
 
 def InvariantPointAttentionTest(args, config, global_config):
 	print('InvariantPointAttentionTest')
@@ -42,7 +36,7 @@ def InvariantPointAttentionTest(args, config, global_config):
 
 def test_torsion_angles_to_frames(args):
 	print('test_torsion_angles_to_frames')
-	(activations, aatype, torsion_angles_sin_cos), res = quat_load_data(args, 'test_torsion_angles_to_frames')
+	(activations, aatype, torsion_angles_sin_cos), res = load_data(args, 'test_torsion_angles_to_frames')
 	rigs = QuatAffine.from_tensor(activations).to_rigids()
 	this_res = torsion_angles_to_frames(aatype=aatype, backb_to_global=rigs, torsion_angles_sin_cos=torsion_angles_sin_cos)
 	this_res = affine.rigids_to_tensor_flat12(this_res)
@@ -50,7 +44,7 @@ def test_torsion_angles_to_frames(args):
 
 def test_frames_and_literature_positions_to_atom14_pos(args):
 	print('test_frames_and_literature_positions_to_atom14_pos')
-	(activations, aatype, torsion_angles_sin_cos), res = quat_load_data(args, 'test_frames_and_literature_positions_to_atom14_pos')
+	(activations, aatype, torsion_angles_sin_cos), res = load_data(args, 'test_frames_and_literature_positions_to_atom14_pos')
 	rigs = QuatAffine.from_tensor(activations).to_rigids()
 	all_frames = torsion_angles_to_frames(aatype=aatype, backb_to_global=rigs, torsion_angles_sin_cos=torsion_angles_sin_cos)
 	this_res = frames_and_literature_positions_to_atom14_pos(aatype=aatype, all_frames_to_global=all_frames)
@@ -213,7 +207,7 @@ if __name__=='__main__':
 	# InvariantPointAttentionTest(args, config, global_config)
 	# test_torsion_angles_to_frames(args)
 	# test_frames_and_literature_positions_to_atom14_pos(args)
-	# MultiRigidSidechainTest(args, config, global_config)
+	MultiRigidSidechainTest(args, config, global_config)
 	# FoldIterationTest(args, config, global_config)
 	# StructureModuleTest(args, config, global_config)
 	# PredictedLDDTHeadTest(args, config, global_config)

@@ -5,23 +5,13 @@ import numpy as np
 from ...Data import pipeline
 
 import torch
-from alphafold.Tests.Model.quaternion_test import convert, check_recursive
+from alphafold.Tests.utils import convert, check_recursive, load_data
 from alphafold.Model.alphafold import AlphaFoldIteration, EmbeddingsAndEvoformer, AlphaFold
 from alphafold.Model import model_config
 
 
-def load_data_afiter(args, filename):
-	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
-		fnargs1, fnargs2, params, res = pickle.load(f)
-	return convert(fnargs1), convert(fnargs2), params, convert(res)
-
-def load_data(args, filename):
-	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
-		fnargs, params, res = pickle.load(f)
-	return convert(fnargs), params, convert(res)
-
 def AlphaFoldIterationTest(args, config, global_config):
-	ensembled_batch, non_ensembled_batch, params, res = load_data_afiter(args, 'AlphaFoldIteration')
+	ensembled_batch, non_ensembled_batch, params, res = load_data(args, 'AlphaFoldIteration')
 	conf = config.model
 	for key in params.keys():
 		print(key)
@@ -97,8 +87,8 @@ if __name__=='__main__':
 	
 	config = model_config(args.model_name)
 	global_config = config.model.global_config
-	# AlphaFoldIterationTest(args, config, global_config)
-	AlphaFoldTest(args, config)
+	AlphaFoldIterationTest(args, config, global_config)
+	# AlphaFoldTest(args, config)
 
 
 	

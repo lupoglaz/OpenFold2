@@ -1,5 +1,6 @@
 # Diff
 *.pkl
+Log/*
 
 
 # Alignments
