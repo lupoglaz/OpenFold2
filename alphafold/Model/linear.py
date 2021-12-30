@@ -29,9 +29,9 @@ class Linear(nn.Linear):
 	def __init__(self, num_input:int, num_output:int, use_bias:bool=True, initializer:str='default') -> None:
 		super(Linear, self).__init__(num_input, num_output, bias=use_bias)
 		if initializer == 'default':
-			self.weight.data.copy_(torch.from_numpy(trunc_init(weights=self.weight, scale=1.0)))
+			self.weight.data.copy_(torch.from_numpy(trunc_init(weights=self.weight, scale=1.0)).view(num_output, num_input))
 		elif initializer == 'relu':
-			self.weight.data.copy_(torch.from_numpy(trunc_init(weights=self.weight, scale=2.0)))
+			self.weight.data.copy_(torch.from_numpy(trunc_init(weights=self.weight, scale=2.0)).view(num_output, num_input))
 		elif initializer == 'glorot':
 			nn.init.xavier_uniform_(self.weight, gain=1.0)
 		elif initializer == 'gating':

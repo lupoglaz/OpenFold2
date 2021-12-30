@@ -3,13 +3,21 @@ import numpy as np
 from pathlib import Path
 import pickle
 
-def convert(arg):
+from pytorch_memlab import MemReporter
+from pytorch_memlab.utils import readable_size as mem_to_str
+reporter = MemReporter()
+
+
+def convert(arg, device:torch.device=None):
 	if isinstance(arg, tuple):
 		return tuple([convert(arg_i) for arg_i in arg])
 	elif isinstance(arg, list):
 		return [convert(arg_i) for arg_i in arg]
 	elif isinstance(arg, np.ndarray):
-		return torch.from_numpy(arg)
+		if device is None:
+			return torch.from_numpy(arg)
+		else:
+			return torch.from_numpy(arg).to(device=device)
 	elif isinstance(arg, dict):
 		return {k: convert(v) for k, v in arg.items()}
 	else:
@@ -85,3 +93,18 @@ def load_data(args, filename):
 	elif len(data) == 2:
 		args, res = data
 		return convert(args), res
+
+def get_total_alloc():
+	reporter.collect_tensor()
+	reporter.get_stats()
+	target_device = torch.device('cuda:0')
+	total_mem = 0
+	total_numel = 0
+	for device, tensor_stats in reporter.device_tensor_stat.items():
+		if device != target_device:
+			continue
+		for stat in tensor_stats:
+			name, size, numel, mem = stat
+			total_mem += mem
+			total_numel += numel
+	return total_mem

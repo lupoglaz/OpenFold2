@@ -49,12 +49,12 @@ def AlphaFoldTest(args, config):
 	for key in batch.keys():
 		print(key, batch[key].shape)
 
-	conf.embeddings_and_evoformer.recycle_pos = False
-	conf.embeddings_and_evoformer.recycle_features = False
+	# conf.embeddings_and_evoformer.recycle_pos = False
+	# conf.embeddings_and_evoformer.recycle_features = False
 	conf.embeddings_and_evoformer.template.enabled = False
 	conf.embeddings_and_evoformer.evoformer_num_block = 1
 	conf.embeddings_and_evoformer.extra_msa_stack_num_block = 1
-	conf.num_recycle = 0
+	conf.num_recycle = 3
 	conf.resample_msa_in_recycling = False
 	global_config.deterministic = True
 
@@ -64,9 +64,15 @@ def AlphaFoldTest(args, config):
 					msa_dim=batch['msa_feat'].shape[-1],
 					extra_msa_dim=25)
 	attn.load_weights_from_af2(params, rel_path='alphafold')
+	
+	attn = attn.cuda()
+	for key in batch.keys():
+		print(key, batch[key].shape)
+		batch[key] = batch[key].to(device='cuda', dtype=torch.float32)
+	
 	with torch.no_grad():
 		this_res = attn(batch, is_training=False)
-	print(this_res)
+	this_res = convert(res, device=torch.device('cpu'))
 	check_recursive(res, this_res)
 
 if __name__=='__main__':
@@ -87,8 +93,8 @@ if __name__=='__main__':
 	
 	config = model_config(args.model_name)
 	global_config = config.model.global_config
-	AlphaFoldIterationTest(args, config, global_config)
-	# AlphaFoldTest(args, config)
+	# AlphaFoldIterationTest(args, config, global_config)
+	AlphaFoldTest(args, config)
 
 
 	

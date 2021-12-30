@@ -378,8 +378,8 @@ class StructureModule(nn.Module):
 
 	def generate_new_affine(self, sequence_mask:torch.Tensor):
 		num_residues = sequence_mask.size(0)
-		quaternion = torch.tile(torch.Tensor([1.0, 0.0, 0.0, 0.0]).reshape(1, 4), (num_residues, 1))
-		translation = torch.zeros(num_residues, 3)
+		quaternion = torch.tile(sequence_mask.new_tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32).reshape(1, 4), (num_residues, 1))
+		translation = sequence_mask.new_zeros(num_residues, 3, dtype=torch.float32)
 		return QuatAffine(quaternion, translation, unstack_inputs=True)
 
 	def generate_affines(self, representations, batch, is_training:bool=False):
@@ -416,7 +416,7 @@ class StructureModule(nn.Module):
 		atom14_pred_positions = vecs_to_tensor(output['sc']['atom_pos'])[-1]
 		atom37_pred_positions = protein.atom14_to_atom37(atom14_pred_positions, batch)
 		atom37_pred_positions *= batch['atom37_atom_exists'][:, :, None]
-		traj = output['affine'] * torch.tensor([1.0]*4 + [self.config.position_scale]*3)
+		traj = output['affine'] * output['affine'].new_tensor([1.0]*4 + [self.config.position_scale]*3)
 		ret = {
 			'representations': {
 				'structure_module': output['act']

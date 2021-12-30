@@ -1,7 +1,11 @@
 import torch
 from torch import nn
+
 from alphafold.Model.msa import *
 from alphafold.Model.spatial import *
+from alphafold.Model.Opt.msa import *
+from alphafold.Model.Opt.spatial import *
+
 from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
 from typing import Mapping, OrderedDict
@@ -56,19 +60,19 @@ class EvoformerIteration(nn.Module):
 		self.global_config = global_config
 		self.is_extra_msa = is_extra_msa
 
-		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBias(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)
+		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBiasOpt(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)
 		
 		if not is_extra_msa:
-			self.msa_column_attention = MSAColumnAttention(config.msa_column_attention, global_config, msa_dim)
+			self.msa_column_attention = MSAColumnAttentionOpt(config.msa_column_attention, global_config, msa_dim)
 		else:
-			self.msa_column_attention = MSAColumnGlobalAttention(config.msa_column_attention, global_config, msa_dim)
+			self.msa_column_attention = MSAColumnGlobalAttentionOpt(config.msa_column_attention, global_config, msa_dim)
 
 		self.msa_transition = Transition(config.msa_transition, global_config, msa_dim)
-		self.outer_product_mean = OuterProductMean(config.outer_product_mean, global_config, pair_dim, msa_dim)
-		self.triangle_multiplication_outgoing = TriangleMultiplication(config.triangle_multiplication_outgoing, global_config, pair_dim)
-		self.triangle_multiplication_incoming = TriangleMultiplication(config.triangle_multiplication_incoming, global_config, pair_dim)
-		self.triangle_attention_starting_node = TriangleAttention(config.triangle_attention_starting_node, global_config, pair_dim)
-		self.triangle_attention_ending_node = TriangleAttention(config.triangle_attention_ending_node, global_config, pair_dim)
+		self.outer_product_mean = OuterProductMeanOpt(config.outer_product_mean, global_config, pair_dim, msa_dim)
+		self.triangle_multiplication_outgoing = TriangleMultiplicationOpt(config.triangle_multiplication_outgoing, global_config, pair_dim)
+		self.triangle_multiplication_incoming = TriangleMultiplicationOpt(config.triangle_multiplication_incoming, global_config, pair_dim)
+		self.triangle_attention_starting_node = TriangleAttentionOpt(config.triangle_attention_starting_node, global_config, pair_dim)
+		self.triangle_attention_ending_node = TriangleAttentionOpt(config.triangle_attention_ending_node, global_config, pair_dim)
 		self.pair_transition = Transition(config.pair_transition, global_config, pair_dim)
 
 	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
@@ -91,7 +95,7 @@ class EvoformerIteration(nn.Module):
 		msa_act, pair_act = activations['msa'], activations['pair']
 		msa_mask, pair_mask = masks['msa'], masks['pair']
 		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
-
+		
 		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
 		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
 		msa_act = DO(self.msa_transition, msa_act, msa_mask)
@@ -124,7 +128,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=True))
-		self.evoformer_stack = []
+		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
 			self.evoformer_stack.append(EvoformerIteration(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
@@ -191,15 +195,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 			'single': single_act,
 			'pair': pair_act,
 			'msa': msa_act[:batch['msa_feat'].size(0), :, :],
-			'msa_first_row': msa_act[0],
-			#extra debug:
-			# 'inp_msa_act': inp_msa_act,
-			# 'inp_pair_act': inp_pair_act,
-			# 'mask_2d': mask_2d,
-			# 'extra_msa_act': extra_msa_act,
-			# 'single_act': single_act,
-			# 'extra_msa_output_msa': extra_act['msa'],
-			# 'extra_msa_output_pair': extra_act['pair']
+			'msa_first_row': msa_act[0]
 		}
 		return output
 
@@ -230,18 +226,19 @@ class AlphaFoldIteration(nn.Module):
 			'predicted_aligned_error': (functools.partial(PredictedAlignedErrorHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
 			'experimentally_resolved': (functools.partial(ExperimentallyResolvedHead, num_feat_1d=evo_conf.seq_channel), self.LOW)
 		}
-		self.heads = {}
-		self.head_order = []
-		for head_name, head_config in sorted(self.config.heads.items()):
+		
+		self.head_order = [(head_name, head_dict[head_name][1]) for head_name, head_config in self.config.heads.items() if head_config.weight]
+		self.head_order.sort(key=lambda x: x[1])
+		self.heads = nn.ModuleList()
+		for head_name, priority in self.head_order:
+			head_config = self.config.heads[head_name]
 			if not head_config.weight:
 				continue
 			head_factory, priority = head_dict[head_name]
-			self.head_order.append((priority, head_name))
-			self.heads[head_name] = (head_config, head_factory(head_config, global_config))
-		self.head_order.sort(key=lambda x: x[0])
+			self.heads.append(head_factory(head_config, global_config))
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold_iteration', ind:int=None):
-		for name, (config, module) in self.heads.items():
+		for (name, priority), module in zip(self.head_order, self.heads):
 			if name != 'structure_module':
 				load_name = f'{name}_head'
 			else:
@@ -278,24 +275,24 @@ class AlphaFoldIteration(nn.Module):
 			loss_output = module.loss(value, batch)
 			ret[name].update(loss_output)
 			loss = head_config.weight * ret[name]['loss']
-
-		for priority, name in self.head_order:
-			head_config, module = self.heads[name]
-			ret[name] = module(representations, batch, is_training)
+			return loss
+		
+		for (name, priority), head in zip(self.head_order, self.heads):	
+			head_config = self.config.heads[name]
+			ret[name] = head(representations, batch, is_training)
 			if 'representations' in ret[name]:
 				representations.update(ret[name].pop('representations'))
 			if self.compute_loss:
 				if name in ('predicted_aligned_error', 'predicted_lddt'):
-					total_loss += loss(module, head_config, ret, name, filter_ret=False)
+					total_loss += loss(head, head_config, ret, name, filter_ret=False)
 				else:
-					total_loss += loss(module, head_config, ret, name, filter_ret=True)
+					total_loss += loss(head, head_config, ret, name, filter_ret=True)
 		
 		if self.compute_loss:
 			return ret, total_loss
 		else:
 			return ret
-		
-		
+			
 
 class AlphaFold(nn.Module):
 	def __init__(self, config, num_res:int, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
@@ -312,12 +309,15 @@ class AlphaFold(nn.Module):
 	def load_weights_from_af2(self, data, rel_path: str='alphafold', ind:int=None):
 		self.impl.load_weights_from_af2(data, rel_path=f'{rel_path}/alphafold_iteration')
 
-	def forward(self, batch, is_training:bool=False, compute_loss=False, ensemble_representations=False, return_representations=False):
+	def forward(self, batch, 
+				is_training:bool=False, compute_loss:bool=False, 
+				ensemble_representations:bool=False, return_representations=False):
+
 		batch_size, num_residues = batch['aatype'].shape
-		inf = torch.Tensor([float('+Inf')])
+		inf = batch['target_feat'].new_tensor([1e9])
 
 		def get_prev(ret):
-			return { 'prev_pos': ret['structure_module']['final_atom_positions'].detach(),
+			return {'prev_pos': ret['structure_module']['final_atom_positions'].detach(),
 					'prev_msa_first_row': ret['representations']['msa_first_row'].detach(),
 					'prev_pair': ret['representations']['pair'].detach()}
 
@@ -341,9 +341,9 @@ class AlphaFold(nn.Module):
 
 		if self.config.num_recycle:
 			emb_config = self.config.embeddings_and_evoformer
-			prev = {'prev_pos': torch.zeros(num_residues, residue_constants.atom_type_num, 3),
-					'prev_msa_first_row':torch.zeros(num_residues, emb_config.msa_channel),
-					'prev_pair':torch.zeros(num_residues, num_residues, emb_config.pair_channel)}
+			prev = {'prev_pos': batch['target_feat'].new_zeros(num_residues, residue_constants.atom_type_num, 3),
+					'prev_msa_first_row':batch['target_feat'].new_zeros(num_residues, emb_config.msa_channel),
+					'prev_pair':batch['target_feat'].new_zeros(num_residues, num_residues, emb_config.pair_channel)}
 			if 'iter_num_recycling' in 	batch:
 				num_iter = batch['iter_num_recycling'][0].item()
 				num_iter = min(num_iter, self.config.num_recycle)

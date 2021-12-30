@@ -6,9 +6,13 @@ from alphafold.Model.linear import Linear
 from alphafold.Model.Utils.tensor_utils import permute_final_dims, flatten_final_dims
 import math
 
+from alphafold.Model.msa import MSAColumnAttention, MSAColumnGlobalAttention
+
 class AttentionOpt(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L546
+	and
+	https://github.com/aqlaboratory/openfold/blob/e1c7c9e7cf353b068c3df7b8a23803f45dfea75d/openfold/model/primitives.py#L167
 	"""
 	def __init__(self, config, global_config, output_dim:int, key_dim:int, value_dim:int,
 				q_chunk_size:int=None, kv_chunk_size:int=None) -> None:
@@ -171,6 +175,8 @@ class AttentionOpt(nn.Module):
 class GlobalAttentionOpt(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L630
+	and
+	https://github.com/aqlaboratory/openfold/blob/e1c7c9e7cf353b068c3df7b8a23803f45dfea75d/openfold/model/primitives.py#L300
 	"""
 	def __init__(self, config, global_config, output_dim:int, key_dim:int, value_dim:int) -> None:
 		super(GlobalAttentionOpt, self).__init__()
@@ -284,3 +290,78 @@ class GlobalAttentionOpt(nn.Module):
 		else:
 			raise NotImplemented()
 		return output
+
+class MSARowAttentionWithPairBiasOpt(nn.Module):
+	"""
+	Optimized MSARowAttentionWithPairBias
+	"""
+	def __init__(self, config, global_config, pair_dim:int, msa_dim:int) -> None:
+		super(MSARowAttentionWithPairBiasOpt, self).__init__()
+		self.config = config
+		self.global_config = global_config
+		self.query_norm = nn.LayerNorm(msa_dim)
+		self.feat_2d_norm = nn.LayerNorm(pair_dim)
+		self.feat_2d_weights = Linear(pair_dim, config.num_head, use_bias=False, initializer='normal')
+		self.attn = AttentionOpt(config, global_config, msa_dim, msa_dim, msa_dim)
+
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+		modules=[self.query_norm, self.feat_2d_norm]
+		names=['query_norm', 'feat_2d_norm']
+		for module, name in zip(modules, names):
+			if ind is None:
+				w = data[f'{rel_path}/{name}']['scale']
+				b = data[f'{rel_path}/{name}']['offset']
+			else:
+				w = data[f'{rel_path}/{name}']['scale'][ind,...]
+				b = data[f'{rel_path}/{name}']['offset'][ind,...]
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w))
+			module.bias.data.copy_(torch.from_numpy(b))
+
+		if ind is None:
+			d = data[f'{rel_path}']['feat_2d_weights']
+		else:
+			d = data[f'{rel_path}']['feat_2d_weights'][ind,...]
+		
+		print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.weight.size()}')
+		self.feat_2d_weights.weight.data.copy_(torch.from_numpy(d).transpose(-1,-2))
+		
+		self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
+		
+
+	def forward(self, msa_act:torch.Tensor, msa_mask:torch.Tensor, pair_act:torch.Tensor, is_training:bool=False):
+		assert msa_act.ndimension() == 3
+		assert msa_mask.ndimension() == 2
+		assert self.config.orientation == 'per_row'
+
+		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		msa_act = self.query_norm(msa_act)
+		pair_act = self.feat_2d_norm(pair_act)
+		nonbatched_bias = self.feat_2d_weights(pair_act)
+		nonbatched_bias = permute_final_dims(nonbatched_bias, (2,0,1))
+		msa_act = self.attn(msa_act, msa_act, bias, nonbatched_bias)
+
+		return msa_act
+
+class MSAColumnAttentionOpt(MSAColumnAttention):
+	"""
+	Optimized MSAColumnAttention
+	"""
+	def __init__(self, config, global_config, msa_dim:int) -> None:
+		super(MSAColumnAttentionOpt, self).__init__(config, global_config, msa_dim)
+		self.config = config
+		self.global_config = global_config
+		self.query_norm = nn.LayerNorm(msa_dim)
+		self.attn = AttentionOpt(config, global_config, msa_dim, msa_dim, msa_dim)
+
+class MSAColumnGlobalAttentionOpt(MSAColumnGlobalAttention):
+	"""
+	Optimized MSAColumnGlobalAttention
+	"""
+	def __init__(self, config, global_config, msa_dim:int) -> None:
+		super(MSAColumnGlobalAttentionOpt, self).__init__(config, global_config, msa_dim)
+		self.config = config
+		self.global_config = global_config
+		self.query_norm = nn.LayerNorm(msa_dim)
+		self.attn = GlobalAttentionOpt(config, global_config, msa_dim, msa_dim, msa_dim)

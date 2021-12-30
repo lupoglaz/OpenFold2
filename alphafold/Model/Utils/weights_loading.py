@@ -2,6 +2,20 @@ from typing import Sequence
 import torch
 import torch.nn as nn
 import numpy as np
+from typing import Mapping
+
+def params_to_torch(params: Mapping[str, np.ndarray]) -> Mapping[str, Mapping[str, np.ndarray]]:
+	"""
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/utils.py#L72
+	"""
+	torch_params = {}
+	for path, array in params.items():
+		scope, name = path.split('//')
+		if scope not in torch_params:
+			torch_params[scope] = {}
+		torch_params[scope][name] = array
+	return torch_params
+
 
 def load_linear(data, modules, names:Sequence[int]=None, nums:Sequence[int]=None, rel_path: str='predicted_aligned_error_head', ind:int=None):
 	if names is None:

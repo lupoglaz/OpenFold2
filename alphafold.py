@@ -15,7 +15,11 @@ import numpy as np
 import pickle
 import torch
 
-from alphafold.Model import AlphaFold, AlphaFoldFeatures, model_config
+from alphafold.Model.alphafold import AlphaFold
+from alphafold.Model import model_config
+from alphafold.Model.features import AlphaFoldFeatures
+from alphafold.Model.Utils.weights_loading import params_to_torch
+
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
@@ -62,31 +66,36 @@ if __name__ == '__main__':
 	path = os.path.join(args.data_dir, 'params', f'params_{args.model_name}.npz')
 	with open(path, 'rb') as f:
 		params = np.load(io.BytesIO(f.read()), allow_pickle=False)
-
-	torch_params = {}
-	for path, array in params.items():
-		scope, name = path.split('//')
-		if scope not in torch_params:
-			torch_params[scope] = {}
-		torch_params[scope][name] = torch.from_numpy(array)
-		print(scope, torch_params[scope][name].size(), name)
-
-	model_config = model_config(args.model_name)
-	model_config.data.eval.num_ensemble = 1
-	af2 = AlphaFold(config=model_config)
-	af2features = AlphaFoldFeatures(config=model_config)
-
-	path = os.path.join(args.output_dir, 'T1024', f'features.pkl')
-	with open(path, 'rb') as f:
-		feature_dict = pickle.load(f)
+	params = params_to_torch(params)
 	
-	processed_features = af2features(feature_dict, random_seed=42)
+
+	# af2features = AlphaFoldFeatures(config=model_config)
+
+	# path = os.path.join(args.output_dir, 'T1024', f'features.pkl')
+	# with open(path, 'rb') as f:
+	# 	feature_dict = pickle.load(f)
+	
+	# processed_features = af2features(feature_dict, random_seed=42)
+	
 	
 	path = os.path.join(args.output_dir, 'T1024', f'proc_features.pkl')
 	with open(path, 'rb') as f:
-		processed_feature_dict = pickle.load(f)
+		batch = pickle.load(f)
 	
-	for k, v in processed_feature_dict.items():
-		print(k, v.shape)
+	for key in batch.keys():
+		print(key, batch[key].shape)
+		batch[key] = torch.from_numpy(batch[key]).to(device='cuda')
+		batch[key] = batch[key][0].unsqueeze(dim=0)
 
-	prediction_result, _ = af2(processed_feature_dict, is_training=False)
+	model_config = model_config(args.model_name).model
+	model_config.embeddings_and_evoformer.template.enabled = False
+	model_config.resample_msa_in_recycling = False
+	af2 = AlphaFold(config=model_config,
+					num_res=batch['target_feat'].shape[-2],
+					target_dim=batch['target_feat'].shape[-1], 
+					msa_dim=batch['msa_feat'].shape[-1],
+					extra_msa_dim=25)
+	af2.load_weights_from_af2(params, rel_path='alphafold')
+	af2 = af2.cuda()
+	with torch.no_grad():
+		prediction_result, _ = af2(batch, is_training=False)

@@ -85,9 +85,19 @@ def TriangleAttentionTest(args, config, global_config):
 	
 	check_recursive(this_res, res)
 
-def TriangleMultiplicationTest(args, config, global_config):
-	feat, params, res = load_data(args, 'TriangleMultiplication')
+def TriangleMultiplicationOutgoingTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleMultiplicationOutgoing')
 	conf = config.model.embeddings_and_evoformer.evoformer.triangle_multiplication_outgoing
+	attn = TriangleMultiplication(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	
+	attn.load_weights_from_af2(params, rel_path='triangle_multiplication')
+	this_res = attn(feat['pair_act'], feat['pair_mask'])
+	
+	check_recursive(this_res, res)
+
+def TriangleMultiplicationIncomingTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleMultiplicationIncoming')
+	conf = config.model.embeddings_and_evoformer.evoformer.triangle_multiplication_incoming
 	attn = TriangleMultiplication(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
 	
 	attn.load_weights_from_af2(params, rel_path='triangle_multiplication')
@@ -149,7 +159,7 @@ def EvoformerIterationTest2(args, config, global_config):
 	this_res = attn(activations, masks, is_training=False)
 	check_recursive(this_res, res)
 
-def EmbeddingsAndEvoformerTest(args, config, global_config):
+def EmbeddingsAndEvoformerTest(args, config, global_config, cuda:bool=False):
 	feat, params, res = load_data(args, 'EmbeddingsAndEvoformer')
 	conf = config.model.embeddings_and_evoformer
 	for key in params.keys():
@@ -168,9 +178,15 @@ def EmbeddingsAndEvoformerTest(args, config, global_config):
 	attn = EmbeddingsAndEvoformer(conf, global_config, 
 								target_dim=feat['target_feat'].shape[-1], 
 								msa_dim=feat['msa_feat'].shape[-1],
-								extra_msa_dim=25)
+								extra_msa_dim=25, clear_cache=False)
 	attn.load_weights_from_af2(params, rel_path='evoformer')
 	
+	if cuda:
+		attn = attn.cuda()
+		for key in feat.keys():
+			if isinstance(feat[key], torch.Tensor):
+				feat[key] = feat[key].to(device='cuda')
+		
 	this_res = attn(feat, is_training=False)
 	check_recursive(this_res, res)
 
@@ -198,20 +214,21 @@ if __name__=='__main__':
 
 	# create_extra_msa_features_test(args, config, global_config)
 	
-	AttentionTest(args, config, global_config)
+	# AttentionTest(args, config, global_config)
 	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)
 	# TriangleAttentionTest(args, config, global_config)
-	# TriangleMultiplicationTest(args, config, global_config)
+	# TriangleMultiplicationIncomingTest(args, config, global_config)
+	# TriangleMultiplicationOutgoingTest(args, config, global_config)
 	# OuterProductMeanTest(args, config, global_config)
 	# TransitionTest(args, config, global_config)
 	# EvoformerIterationTest1(args, config, global_config)
 	# EvoformerIterationTest2(args, config, global_config)
 	
-	# with torch.no_grad():
-	# 	EmbeddingsAndEvoformerTest(args, config, global_config)
+	with torch.no_grad():
+		EmbeddingsAndEvoformerTest(args, config, global_config)
 	
 	
 

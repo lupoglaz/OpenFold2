@@ -14,8 +14,10 @@ def torsion_angles_to_frames(aatype:torch.Tensor, backb_to_global:affine.Rigids,
 	assert torsion_angles_sin_cos.ndimension() == 3
 	assert torsion_angles_sin_cos.size(1) == 7
 	assert torsion_angles_sin_cos.size(2) == 2
+	device = torsion_angles_sin_cos.device
+	dtype = torsion_angles_sin_cos.dtype
 
-	frames = torch.from_numpy(residue_constants.restype_rigid_group_default_frame)
+	frames = torch.from_numpy(residue_constants.restype_rigid_group_default_frame).to(device=device, dtype=dtype)
 	idxs = aatype.to(dtype=torch.long)[...,None,None,None].repeat(1, frames.size(1), frames.size(2), frames.size(3))
 	m = torch.gather(frames, dim=0, index=idxs)	
 	default_frames = affine.rigids_from_tensor4x4(m)
@@ -58,10 +60,12 @@ def frames_and_literature_positions_to_atom14_pos(aatype:torch.Tensor, all_frame
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L532
 	"""
 	aatype = aatype.to(dtype=torch.long)
+	device = all_frames_to_global.trans.x.device
+	dtype = all_frames_to_global.trans.x.dtype
 	
-	restype_atom14_to_rigid_group = torch.from_numpy(residue_constants.restype_atom14_to_rigid_group)
-	restype_atom14_rigid_group_positions = torch.from_numpy(residue_constants.restype_atom14_rigid_group_positions)
-	restype_atom14_mask = torch.from_numpy(residue_constants.restype_atom14_mask)
+	restype_atom14_to_rigid_group = torch.from_numpy(residue_constants.restype_atom14_to_rigid_group).to(device=device)
+	restype_atom14_rigid_group_positions = torch.from_numpy(residue_constants.restype_atom14_rigid_group_positions).to(device=device, dtype=dtype)
+	restype_atom14_mask = torch.from_numpy(residue_constants.restype_atom14_mask).to(device=device)
 
 	residx_to_group_idx = torch.gather(restype_atom14_to_rigid_group, dim=0, index=aatype[:,None].repeat(1, 14))
 	group_mask = F.one_hot(residx_to_group_idx, 8)
