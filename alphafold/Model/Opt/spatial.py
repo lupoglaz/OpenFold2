@@ -8,6 +8,8 @@ import math
 
 from alphafold.Model.Opt.msa import AttentionOpt
 
+from .mapping import inference_subbatch
+
 class TriangleAttentionOpt(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L900
@@ -226,4 +228,57 @@ class OuterProductMeanOpt(nn.Module):
 		eps = 1e-3
 		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
+		return act
+
+class TransitionOpt(nn.Module):
+	"""
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L484
+	"""
+	def __init__(self, config, global_config, num_channel:int) -> None:
+		super(TransitionOpt, self).__init__()
+		self.config = config
+		self.global_config = global_config
+
+		num_intermediate = int(num_channel * config.num_intermediate_factor)
+		self.input_layer_norm = nn.LayerNorm(num_channel)
+		self.transition = nn.Sequential(nn.Linear(num_channel, num_intermediate),
+										nn.ReLU(),
+										nn.Linear(num_intermediate, num_channel))
+		
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+		modules=[self.input_layer_norm]
+		names=['input_layer_norm']
+		for module, name in zip(modules, names):
+			if ind is None:
+				w = data[f'{rel_path}/{name}']['scale']
+				b = data[f'{rel_path}/{name}']['offset']
+			else:
+				w = data[f'{rel_path}/{name}']['scale'][ind,...]
+				b = data[f'{rel_path}/{name}']['offset'][ind,...]
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w))
+			module.bias.data.copy_(torch.from_numpy(b))
+		
+		modules=[self.transition[0], self.transition[-1]]
+		names=['transition1', 'transition2']
+		for module, name in zip(modules, names):
+			if ind is None:
+				w = data[f'{rel_path}/{name}']['weights']
+				b = data[f'{rel_path}/{name}']['bias']
+			else:
+				w = data[f'{rel_path}/{name}']['weights'][ind,...]
+				b = data[f'{rel_path}/{name}']['bias'][ind,...]
+			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
+			module.bias.data.copy_(torch.from_numpy(b))
+
+	def forward(self, act: torch.Tensor, mask: torch.Tensor, is_training:bool=False) -> torch.Tensor:
+		mask = mask.unsqueeze(dim=-1)
+		act = self.input_layer_norm(act)
+		# act = self.transition(act)
+		act = inference_subbatch(	self.transition, self.global_config.subbatch_size,
+									batched_args = [act], nonbatched_args = [],
+									low_memory = not(is_training))
 		return act

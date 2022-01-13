@@ -5,7 +5,7 @@ from alphafold.Model import model_config
 import numpy as np
 from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
 from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
-from alphafold.Model.Opt.spatial import TriangleAttentionOpt, TriangleMultiplicationOpt, OuterProductMeanOpt
+from alphafold.Model.Opt.spatial import TriangleAttentionOpt, TriangleMultiplicationOpt, OuterProductMeanOpt, TransitionOpt
 
 def TriangleAttentionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'TriangleAttention')
@@ -106,6 +106,39 @@ def OuterProductMeanTest(args, config, global_config):
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 
 
+def TransitionTest(args, config, global_config):
+	feat, params, res = load_data(args, 'Transition')
+
+	conf = config.model.embeddings_and_evoformer.evoformer.pair_transition
+	attn_opt = TransitionOpt(conf, global_config, num_channel=feat['seq_act'].shape[-1])
+	attn_opt.load_weights_from_af2(params, 'transition_block')
+	attn_vanilla = Transition(conf, global_config, num_channel=feat['seq_act'].shape[-1])
+	attn_vanilla.load_weights_from_af2(params, 'transition_block')
+	
+
+	attn_vanilla.cuda()
+	feat['seq_act'] = feat['seq_act'].to(device='cuda', dtype=torch.float32)
+	feat['seq_mask'] = feat['seq_mask'].to(device='cuda', dtype=torch.float32)
+	
+	alloc_start_vanilla = get_total_alloc()
+	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('Transition'))
+	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
+		res_vanilla = attn_vanilla(feat['seq_act'], feat['seq_mask'])	
+		profiler.step()
+	alloc_end_vanilla = get_total_alloc()
+
+	attn_opt.cuda()
+	alloc_start_opt = get_total_alloc()
+	handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('TransitionOpt'))
+	with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
+		res_opt = attn_opt(feat['seq_act'], feat['seq_mask'])
+		profiler.step()
+	alloc_end_opt = get_total_alloc()
+		
+	check_recursive(res_opt, res_vanilla)
+	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
+	
+
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
@@ -116,5 +149,6 @@ if __name__=='__main__':
 
 	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
-	OuterProductMeanTest(args, config, global_config)
+	# OuterProductMeanTest(args, config, global_config)
+	TransitionTest(args, config, global_config)
 	
