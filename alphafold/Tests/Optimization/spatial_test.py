@@ -110,6 +110,7 @@ def TransitionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'Transition')
 
 	conf = config.model.embeddings_and_evoformer.evoformer.pair_transition
+	global_config.subbatch_size = 2
 	attn_opt = TransitionOpt(conf, global_config, num_channel=feat['seq_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, 'transition_block')
 	attn_vanilla = Transition(conf, global_config, num_channel=feat['seq_act'].shape[-1])
@@ -147,8 +148,8 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	# TriangleAttentionTest(args, config, global_config)
+	TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
 	# OuterProductMeanTest(args, config, global_config)
-	TransitionTest(args, config, global_config)
+	# TransitionTest(args, config, global_config)
 	

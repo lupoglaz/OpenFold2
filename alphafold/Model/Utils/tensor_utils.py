@@ -11,3 +11,14 @@ def permute_final_dims(tensor:torch.Tensor, idx:List[int]):
 
 def flatten_final_dims(tensor:torch.Tensor, num_dims:int):
 	return tensor.reshape(tensor.shape[:-num_dims] + (-1,))
+
+def tree_map(fn, tree):
+	if isinstance(tree, dict):
+		return {k: tree_map(fn, v) for k,v in tree.items()}
+	if isinstance(tree, list):
+		return [tree_map(fn, v) for v in tree]
+	if isinstance(tree, tuple):
+		return tuple([tree_map(fn, v) for v in tree])
+	if isinstance(tree, torch.Tensor):
+		return fn(tree)
+	raise(ValueError(f'Not supported {type(tree)}'))

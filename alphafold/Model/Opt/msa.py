@@ -7,6 +7,7 @@ from alphafold.Model.Utils.tensor_utils import permute_final_dims, flatten_final
 import math
 
 from alphafold.Model.msa import MSAColumnAttention, MSAColumnGlobalAttention
+from .mapping import inference_subbatch
 
 class AttentionOpt(nn.Module):
 	"""
@@ -340,8 +341,11 @@ class MSARowAttentionWithPairBiasOpt(nn.Module):
 		pair_act = self.feat_2d_norm(pair_act)
 		nonbatched_bias = self.feat_2d_weights(pair_act)
 		nonbatched_bias = permute_final_dims(nonbatched_bias, (2,0,1))
-		msa_act = self.attn(msa_act, msa_act, bias, nonbatched_bias)
-
+		# msa_act = self.attn(msa_act, msa_act, bias, nonbatched_bias)
+		msa_act = inference_subbatch(self.attn, self.global_config.subbatch_size, 
+									batched_args=[msa_act, msa_act, bias],
+									nonbatched_args=[nonbatched_bias],
+									low_memory=(not is_training))
 		return msa_act
 
 class MSAColumnAttentionOpt(MSAColumnAttention):
@@ -355,6 +359,26 @@ class MSAColumnAttentionOpt(MSAColumnAttention):
 		self.query_norm = nn.LayerNorm(msa_dim)
 		self.attn = AttentionOpt(config, global_config, msa_dim, msa_dim, msa_dim)
 
+	def forward(self, msa_act:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
+		assert msa_act.ndimension() == 3
+		assert msa_mask.ndimension() == 2
+		assert self.config.orientation == 'per_column'
+
+		msa_act = msa_act.transpose(-2, -3)
+		msa_mask = msa_mask.transpose(-1, -2)
+		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		assert bias.ndimension() == 4
+
+		msa_act = self.query_norm(msa_act)
+		# msa_act = self.attn(msa_act, msa_act, bias)
+		inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+							batched_args=[msa_act, msa_act, bias],
+							nonbatched_args=[],
+							low_memory=(not is_training))
+
+		msa_act = msa_act.transpose(-2, -3)
+		return msa_act
+
 class MSAColumnGlobalAttentionOpt(MSAColumnGlobalAttention):
 	"""
 	Optimized MSAColumnGlobalAttention
@@ -365,3 +389,23 @@ class MSAColumnGlobalAttentionOpt(MSAColumnGlobalAttention):
 		self.global_config = global_config
 		self.query_norm = nn.LayerNorm(msa_dim)
 		self.attn = GlobalAttentionOpt(config, global_config, msa_dim, msa_dim, msa_dim)
+
+	def forward(self, msa_act:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
+		assert msa_act.ndimension() == 3
+		assert msa_mask.ndimension() == 2
+		assert self.config.orientation == 'per_column'
+
+		msa_act = msa_act.transpose(-2, -3)
+		msa_mask = msa_mask.transpose(-1, -2)
+		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		msa_mask = msa_mask.unsqueeze(dim=-1)
+		assert bias.ndimension() == 4
+
+		msa_act = self.query_norm(msa_act)
+		# msa_act = self.attn(msa_act, msa_act, msa_mask, bias)
+		inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+							batched_args=[msa_act, msa_act, msa_mask, bias],
+							nonbatched_args=[],
+							low_memory=(not is_training))
+		msa_act = msa_act.transpose(-2, -3)
+		return msa_act

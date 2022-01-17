@@ -24,10 +24,10 @@ def convert(arg, device:torch.device=None):
 		return arg
 
 def check_success(this_res, res):
-	err = torch.abs(this_res.detach().to(dtype=torch.float32) - res.to(dtype=torch.float32))
+	err = torch.abs(this_res.detach().to(dtype=torch.float32, device='cpu') - res.detach().to(dtype=torch.float32, device='cpu'))
 	max_err = torch.max(err).item()
 	mean_err = torch.mean(err).item()
-	return err.sum(), max_err, mean_err
+	return err.sum().numpy(), max_err, mean_err
 
 def check_recursive(a, b, depth:int=0, key=None, tol_max:float=1e-3, tol_mean=1e-3):
 	str_depth = ''.join(['--' for i in range(depth)])

@@ -60,7 +60,11 @@ class TriangleAttentionOpt(nn.Module):
 		pair_act = self.query_norm(pair_act)
 		nonbatched_bias = self.feat_2d_weights(pair_act)
 		nonbatched_bias = permute_final_dims(nonbatched_bias, (2,0,1))
-		pair_act = self.attn(pair_act, pair_act, bias, nonbatched_bias)
+		# pair_act = self.attn(pair_act, pair_act, bias, nonbatched_bias)
+		pair_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+							batched_args=[pair_act, pair_act, bias],
+							nonbatched_args=[nonbatched_bias],
+							low_memory=(not is_training))
 
 		if self.config.orientation == 'per_column':
 			pair_act = pair_act.transpose(-2, -3)
@@ -221,6 +225,8 @@ class OuterProductMeanOpt(nn.Module):
 		left_act = left_act.transpose(-2, -3)
 		right_act = right_act.transpose(-2, -3)
 		
+		#TODO: CHUNKS
+		# https://github.com/lupoglaz/alphafold/blob/d7a4bd4c3ab1c403d5e4d849d408782b546402dc/alphafold/model/modules.py#L1497	
 		act = torch.einsum('...bac,...dae->...bdce', left_act, right_act)
 		act = act.reshape(act.shape[:-2]+(-1,))
 		act = self.output_w(act)
