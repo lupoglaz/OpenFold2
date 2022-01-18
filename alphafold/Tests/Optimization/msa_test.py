@@ -183,6 +183,6 @@ if __name__=='__main__':
 
 	# AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
-	MSARowAttentionWithPairBiasTest(args, config, global_config)
+	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
-	# MSAColumnGlobalAttentionTest(args, config, global_config)
+	MSAColumnGlobalAttentionTest(args, config, global_config)

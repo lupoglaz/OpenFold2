@@ -102,6 +102,7 @@ class AlphaFoldFeatures(nn.Module):
 		tensor_dict = transf.make_seq_mask(tensor_dict)
 		tensor_dict = transf.make_msa_mask(tensor_dict)
 		tensor_dict = transf.make_hhblits_profile(tensor_dict)
+		tensor_dict = transf.make_atom14_masks(tensor_dict)
 		
 		if cfg.common.use_templates:
 			raise NotImplementedError()

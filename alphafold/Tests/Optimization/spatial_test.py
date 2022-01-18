@@ -82,11 +82,10 @@ def OuterProductMeanTest(args, config, global_config):
 	attn_vanilla = OuterProductMean(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
 	attn_vanilla.load_weights_from_af2(params, 'outer_product_mean')
 	
-
 	attn_vanilla.cuda()
 	feat['msa_act'] = feat['msa_act'].to(device='cuda', dtype=torch.float32)
 	feat['msa_mask'] = feat['msa_mask'].to(device='cuda', dtype=torch.float32)
-	
+		
 	alloc_start_vanilla = get_total_alloc()
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('OuterProductMean'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
@@ -101,7 +100,7 @@ def OuterProductMeanTest(args, config, global_config):
 		res_opt = attn_opt(feat['msa_act'], feat['msa_mask'])
 		profiler.step()
 	alloc_end_opt = get_total_alloc()
-		
+	
 	check_recursive(res_opt, res_vanilla)
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 
@@ -148,8 +147,8 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	TriangleAttentionTest(args, config, global_config)
+	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
-	# OuterProductMeanTest(args, config, global_config)
+	OuterProductMeanTest(args, config, global_config)
 	# TransitionTest(args, config, global_config)
 	

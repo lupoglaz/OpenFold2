@@ -371,9 +371,9 @@ class MSAColumnAttentionOpt(MSAColumnAttention):
 
 		msa_act = self.query_norm(msa_act)
 		# msa_act = self.attn(msa_act, msa_act, bias)
-		inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+		msa_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
 							batched_args=[msa_act, msa_act, bias],
-							nonbatched_args=[],
+							nonbatched_args=[None],
 							low_memory=(not is_training))
 
 		msa_act = msa_act.transpose(-2, -3)
@@ -403,7 +403,7 @@ class MSAColumnGlobalAttentionOpt(MSAColumnGlobalAttention):
 
 		msa_act = self.query_norm(msa_act)
 		# msa_act = self.attn(msa_act, msa_act, msa_mask, bias)
-		inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+		msa_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
 							batched_args=[msa_act, msa_act, msa_mask, bias],
 							nonbatched_args=[],
 							low_memory=(not is_training))

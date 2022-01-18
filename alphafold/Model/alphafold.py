@@ -67,13 +67,13 @@ class EvoformerIteration(nn.Module):
 		else:
 			self.msa_column_attention = MSAColumnGlobalAttentionOpt(config.msa_column_attention, global_config, msa_dim)
 
-		self.msa_transition = Transition(config.msa_transition, global_config, msa_dim)
+		self.msa_transition = TransitionOpt(config.msa_transition, global_config, msa_dim)
 		self.outer_product_mean = OuterProductMeanOpt(config.outer_product_mean, global_config, pair_dim, msa_dim)
 		self.triangle_multiplication_outgoing = TriangleMultiplicationOpt(config.triangle_multiplication_outgoing, global_config, pair_dim)
 		self.triangle_multiplication_incoming = TriangleMultiplicationOpt(config.triangle_multiplication_incoming, global_config, pair_dim)
 		self.triangle_attention_starting_node = TriangleAttentionOpt(config.triangle_attention_starting_node, global_config, pair_dim)
 		self.triangle_attention_ending_node = TriangleAttentionOpt(config.triangle_attention_ending_node, global_config, pair_dim)
-		self.pair_transition = Transition(config.pair_transition, global_config, pair_dim)
+		self.pair_transition = TransitionOpt(config.pair_transition, global_config, pair_dim)
 
 	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
 		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias', ind=ind)

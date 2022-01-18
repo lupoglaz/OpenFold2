@@ -225,11 +225,16 @@ class OuterProductMeanOpt(nn.Module):
 		left_act = left_act.transpose(-2, -3)
 		right_act = right_act.transpose(-2, -3)
 		
-		#TODO: CHUNKS
-		# https://github.com/lupoglaz/alphafold/blob/d7a4bd4c3ab1c403d5e4d849d408782b546402dc/alphafold/model/modules.py#L1497	
-		act = torch.einsum('...bac,...dae->...bdce', left_act, right_act)
-		act = act.reshape(act.shape[:-2]+(-1,))
-		act = self.output_w(act)
+		# https://github.com/lupoglaz/alphafold/blob/d7a4bd4c3ab1c403d5e4d849d408782b546402dc/alphafold/model/modules.py#L1497
+		def compute_chunk(left_act, right_act):
+			act = torch.einsum('...bac,...dae->...bdce', left_act, right_act)
+			act = act.reshape(act.shape[:-2]+(-1,))
+			act = self.output_w(act)
+			return act
+		act = inference_subbatch(compute_chunk, self.global_config.subbatch_size,
+								batched_args=[left_act, right_act], nonbatched_args=[],
+								low_memory=(not is_training), 
+								input_subbatch_dim=0, output_subbatch_dims=[0,1])
 				
 		eps = 1e-3
 		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)
