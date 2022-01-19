@@ -349,12 +349,132 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 				origin=affine.vecs_from_tensor(base_atom_pos[:, :, 1, :]),
 				point_on_xy_plane=affine.vecs_from_tensor(base_atom_pos[:, :, 2, :]))
 	group_exists = torch.gather(restype_rigidgroup_mask, aatype)
-	# gt_atom_exists = torch.gather()
+	gt_atom_exists = torch.gather(all_atom_mask.to(dtype=torch.float32), 1, residx_regidgroup_base_atom37_idx)
+	#Double check!
+	gt_exists = torch.min(gt_atom_exists, dim=-1) * group_exists
+
+	rots = np.tile(np.eye(3), [8,1,1])
+	rots[0,0,0] = -1
+	rots[0,2,2] = -1
+	gt_frames = affine.rigids_mul_rots(gt_frames, affine.rots_from_tensor3x3(rots))
+
+	restype_rigidgroup_is_ambiguous = torch.zeros(21, 8, dtype=torch.float32)
+	restype_rigidgroup_rots = np.tile(np.eye(3, dtype=np.float32), [21, 8, 1, 1])
+
+	for resname, _ in residue_constants.residue_atom_renaming_swaps.items():
+		restype = residue_constants.restype_order[residue_constants.restype_3to1[resname]]
+		chi_idx = int(sum(residue_constants.chi_angles_mask[restype]) - 1)
+		restype_rigidgroup_is_ambiguous[restype, chi_idx + 4] = 1
+		restype_rigidgroup_rots[restype, chi_idx + 4, 1, 1] = -1
+		restype_rigidgroup_rots[restype, chi_idx + 4, 2, 2] = -1
+
+	residx_rigidgroup_is_ambiguous = torch.gather(restype_rigidgroup_is_ambiguous, 0, aatype)
+	residx_rigidgroup_is_ambiguity_rot = torch.gather(restype_rigidgroup_rots, 0, aatype)
+
+	alt_gt_frames = affine.rigids_mul_rots(gt_frames, affine.rots_from_tensor3x3(residx_rigidgroup_is_ambiguity_rot))
+	gt_frames_flat12 = affine.rigids_to_tensor_flat12(gt_frames)
+	alt_gt_frames_flat12 = affine.rigids_to_tensor_flat12(alt_gt_frames)
+
+	gt_frames_flat12 = gt_frames_flat12.resize( *(aatype_in_shape + (8,12)) )
+	alt_gt_frames_flat12 = alt_gt_frames_flat12.resize( *(aatype_in_shape + (8,12)) )
+	gt_exists = gt_exists.resize( *(aatype_in_shape + (8,)) )
+	group_exists = group_exists.resize( *(aatype_in_shape + (8,)) )
+	residx_rigidgroup_is_ambiguous = residx_rigidgroup_is_ambiguous.resize( *(aatype_in_shape + (8,)))
+
+	return {
+		'rigidgroups_gt_frames': gt_frames_flat12, 
+		'rigidgroups_gt_exists': gt_exists,
+		'rigidgroups_group_exists': group_exists,
+		'rigidgroups_group_is_ambiguous': residx_rigidgroup_is_ambiguous,
+		'rigidgroups_alt_gt_frames': alt_gt_frames_flat12
+	}
+
+
+def atom37_to_torsion_angles(aatype:torch.Tensor, all_atom_pos:torch.Tensor, all_atom_mask:torch.Tensor,
+							placeholder_for_undefined=False):
+	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L271"""
+	aatype = torch.minimum(aatype, 20)
+	num_batch, num_res = aatype.shape
+
+	pad = torch.zeros(num_batch, 1, 37, 3, dtype=torch.float32)
+	prev_all_atom_pos = torch.cat([pad, all_atom_pos[:, :-1, :, :]], dim=1)
+
+	pad = torch.zeros(num_batch, 1, 37, dtype=torch.float32)
+	prev_all_atom_mask = torch.cat([pad, all_atom_mask[:, :-1, :]], dim=1)
+
+	pre_omega_atom_pos = torch.cat([prev_all_atom_pos[:, :, 1:3, :],
+								all_atom_pos[:, :, 0:2, :]], dim=-2)
+	phi_atom_pos = torch.cat([prev_all_atom_pos[:, :, 2:3, :],
+								all_atom_pos[:, :, 0:3, :]], dim=-2)
+	psi_atom_pos = torch.cat([all_atom_pos[:, :, 0:3, :],
+							all_atom_pos[:, :, 4:5, :]], dim=-2)
+	pre_omega_mask = torch.prod(prev_all_atom_mask[:, :, 1:3], dim=-1)*torch.prod(all_atom_mask[:, :, 0:2], dim=-1)
+	phi_mask = prev_all_atom_mask[:, :, 2]*torch.prod(all_atom_mask[:, :, 0:3], dim=-1)
+	psi_mask = torch.prod(all_atom_mask[:, :, 0:3], dim=-1)*all_atom_mask[:, :, 4]
+
+	chi_atom_indices = get_chi_atom_indices()
+	atom_indices = torch.gather(chi_atom_indices, 0, aatype)
+	chis_atom_pos = torch.gather(all_atom_pos, -2, atom_indices)
+
+	chi_angles_mask = list(residue_constants.chi_angles_mask)
+	chi_angles_mask.append([0.0, 0.0, 0.0, 0.0])
+	chi_angles_mask = torch.tensor(chi_angles_mask)
+
+	chis_mask = torch.gather(chi_angles_mask, 0, aatype)
+	chi_angle_atoms_mask = torch.gather(all_atom_mask, -1, atom_indices) #Double check
+	chi_angle_atoms_mask = torch.prod(chi_angle_atoms_mask, dim=-1)
+	chis_mask = chis_mask * (chi_angle_atoms_mask.to(dtype=torch.float32))
+
+	torsion_atoms_pos = torch.cat([	pre_omega_atom_pos[:,:,None,:,:],
+									phi_atom_pos[:,:,None,:,:],
+									psi_atom_pos[:,:,None,:,:],
+									chis_atom_pos], dim=2)
+	torsion_angles_mask = torch.cat([pre_omega_mask[:,:,None], phi_mask[:,:,None], psi_mask[:,:,None], chis_mask], dim=2)
+
+	torsion_frames = affine.rigids_from_3_points(
+		point_on_neg_axis=affine.vecs_from_tensor(torsion_atoms_pos[:,:,:,1,:]),
+		origin=affine.vecs_from_tensor(torsion_atoms_pos[:,:,:,2,:]),
+		point_on_xy_plane=affine.vecs_from_tensor(torsion_atoms_pos[:,:,:,0,:])
+	)
+	forth_atom_rel_pos = affine.rigids_mul_vecs(
+		affine.rigids_invert(torsion_frames),
+		affine.vecs_from_tensor(torsion_atoms_pos[:,:,:,3,:])
+	)
+	torsion_angles_sin_cos = torch.stack([forth_atom_rel_pos.z, forth_atom_rel_pos.y], dim=-1)
+	torsion_angles_sin_cos /= torch.sqrt(torch.sum(torch.square(torsion_angles_sin_cos), dim=-1, keepdims=True) + 1e-8)
+	torsion_angles_sin_cos *= torch.tensor([1, 1, -1, 1, 1, 1, 1])[None, None, :, None] #Double check
+
+	chi_is_ambiguous = torch.gather(torch.tensor(residue_constants.chi_pi_periodic), aatype)
+	mirror_torsion_angles = torch.cat([torch.ones(num_batch, num_res, 3), 1.0 - 2.0*chi_is_ambiguous], dim=-1)
+	alt_torsion_anles_sin_cos = torsion_angles_sin_cos * mirror_torsion_angles[:,:,:,None]
+
+	if placeholder_for_undefined:
+		placeholder_torsions = torch.stack([torch.ones(*(torsion_angles_sin_cos.shape[:-1])),
+											torch.zeros(*(torsion_angles_sin_cos.shape[:-1]))], dim=-1)
+		torsion_angles_sin_cos = torsion_angles_sin_cos*torsion_angles_mask[...,None] +\
+			 placeholder_torsions*(1.0-torsion_angles_mask[...,None])
+		alt_torsion_anles_sin_cos = alt_torsion_anles_sin_cos*torsion_angles_mask[...,None] +\
+			 placeholder_torsions*(1.0-torsion_angles_mask[...,None])
+	return {
+		'torsion_angles_sin_cos': torsion_angles_sin_cos,
+		'alt_torsion_angles_sin_cos':alt_torsion_anles_sin_cos,
+		'torsion_angles_mask':torsion_angles_mask
+	}
 	
 
+def get_chi_atom_indices():
+	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L50"""
+	chi_atom_indices = []
+	for residue_name in residue_constants.restypes:
+		residue_name = residue_constants.restype_1to3[residue_name]
+		residue_chi_angles = residue_constants.chi_angles_atoms[residue_name]
+		atom_indices = []
+		for chi_angle in residue_chi_angles:
+			atom_indices.append(
+				[residue_constants.atom_order[atom] for atom in chi_angle])
+		for _ in range(4 - len(atom_indices)):
+			atom_indices.append([0, 0, 0, 0])
+		chi_atom_indices.append(atom_indices)
 
-
-def atom37_to_torsion_angles():
-	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L271"""
-	pass
-
+	chi_atom_indices.append([[0, 0, 0, 0]] * 4)
+	return torch.tensor(chi_atom_indices)

@@ -78,6 +78,14 @@ def rots_from_two_vecs(e0_unnormalized:Vecs, e1_unnormalized:Vecs)->Rots:
 	e2 = vecs_cross_vecs(e0, e1)
 	return Rots(e0.x, e1.x, e2.x, e0.y, e1.y, e2.y, e0.z, e1.z, e2.z)
 
+def rots_from_tensor3x3(m:torch.Tensor):
+	assert m.size(-1) == 3
+	assert m.size(-2) == 3
+	return Rots(m[..., 0,0], m[..., 0,1], m[..., 0,2],
+				m[..., 1,0], m[..., 1,1], m[..., 1,2],
+				m[..., 2,0], m[..., 2,1], m[..., 2,2])
+
+
 def vecs_add(a:Vecs, b:Vecs) -> Vecs:
 	return Vecs(a.x+b.x, a.y+b.y, a.z+b.z)
 
