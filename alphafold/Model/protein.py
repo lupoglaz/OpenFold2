@@ -4,6 +4,8 @@ from alphafold.Model import affine
 from alphafold.Common import residue_constants
 from typing import Dict, Optional
 
+import numpy as np
+
 
 def torsion_angles_to_frames(aatype:torch.Tensor, backb_to_global:affine.Rigids, torsion_angles_sin_cos:torch.Tensor) -> affine.Rigids:
 	"""
@@ -313,3 +315,46 @@ def frame_aligned_point_error(
 	normed_error = (error_dist/length_scale)*frames_mask.unsqueeze(dim=-1)*positions_mask.unsqueeze(dim=-2)
 	normalization_factor = torch.sum(frames_mask, dim=-1) * torch.sum(positions_mask, dim=-1)
 	return torch.sum(normed_error, dim=(-2, -1)) / (epsilon + normalization_factor)
+
+
+def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_atom_mask:torch.Tensor) -> Dict[str, torch.Tensor]:
+	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L114"""
+	aatype_in_shape = aatype.shape
+	aatype = aatype.view(-1)
+	all_atom_positions = all_atom_positions.view(-1, 37, 3)
+	all_atom_mask = all_atom_mask.view(-1, 37)
+	restype_rigidbody_base_atom_names = np.full([21, 8, 3], '', dtype=object)
+	restype_rigidbody_base_atom_names[:, 0, :] = ['C', 'CA', 'N']
+	restype_rigidbody_base_atom_names[:, 3, :] = ['CA', 'C', 'O']
+	for restype, restype_letter in enumerate(residue_constants.restypes):
+		resname = residue_constants.restype_1to3[restype_letter]
+		for chi_idx in range(4):
+			if residue_constants.chi_angles_mask[restype][chi_idx]:
+				atom_names = residue_constants.chi_angles_atoms[resname][chi_idx]
+				restype_rigidbody_base_atom_names[restype, chi_idx+4, :] = atom_names[1:]
+
+	restype_rigidgroup_mask = torch.zeros(21, 8, dtype=torch.float32)
+	restype_rigidgroup_mask[:, 0] = 1
+	restype_rigidgroup_mask[:, 3] = 1
+	restype_rigidgroup_mask[:20, 4:] = residue_constants.chi_angles_mask
+
+	lookuptable = residue_constants.atom_order.copy()
+	lookuptable[''] = 0
+	restype_rigidbody_base_atom_names = np.vectorize(lambda x: lookuptable[x])(restype_rigidbody_base_atom_names)
+	residx_regidgroup_base_atom37_idx = torch.gather(restype_rigidbody_base_atom_names, 0, aatype)
+	base_atom_pos = torch.gather(all_atom_positions, 1, residx_regidgroup_base_atom37_idx)
+
+	gt_frames = affine.rigids_from_3_points(
+				point_on_neg_axis=affine.vecs_from_tensor(base_atom_pos[:, :, 0, :]),
+				origin=affine.vecs_from_tensor(base_atom_pos[:, :, 1, :]),
+				point_on_xy_plane=affine.vecs_from_tensor(base_atom_pos[:, :, 2, :]))
+	group_exists = torch.gather(restype_rigidgroup_mask, aatype)
+	# gt_atom_exists = torch.gather()
+	
+
+
+
+def atom37_to_torsion_angles():
+	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L271"""
+	pass
+

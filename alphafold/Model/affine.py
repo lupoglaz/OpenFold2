@@ -39,6 +39,11 @@ def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
 							m[..., 2, 0], m[..., 2, 1], m[..., 2, 2]),
 					Vecs(	m[..., 0, 3], m[..., 1, 3], m[..., 2, 3]))
 
+def rigids_from_3_points(point_on_neg_axis:Vecs, origin:Vecs, point_on_xy_plane:Vecs):
+	m = rots_from_two_vecs(e0 = vecs_sub(origin, point_on_neg_axis),
+							e1 = vecs_sub(point_on_xy_plane, origin))
+	return Rigids(rot=m, trans=origin)
+
 def vecs_from_tensor(x: torch.Tensor) -> Vecs:
 	assert x.size(-1) == 3
 	return Vecs(x[..., 0], x[..., 1], x[..., 2])
@@ -65,8 +70,34 @@ def rots_invert(m:Rots) -> Rots:
 				m.xy, m.yy, m.zy,
 				m.xz, m.yz, m.zz)
 
+def rots_from_two_vecs(e0_unnormalized:Vecs, e1_unnormalized:Vecs)->Rots:
+	e0 = vecs_robust_normalize(e0_unnormalized)
+	c = vecs_dot_vecs(e1_unnormalized, e0)
+	e1 = Vecs(e1_unnormalized.x - c*e0.x, e1_unnormalized.y - c*e0.y, e1_unnormalized.z - c*e0.z)
+	e1 = vecs_robust_normalize(e1)
+	e2 = vecs_cross_vecs(e0, e1)
+	return Rots(e0.x, e1.x, e2.x, e0.y, e1.y, e2.y, e0.z, e1.z, e2.z)
+
 def vecs_add(a:Vecs, b:Vecs) -> Vecs:
 	return Vecs(a.x+b.x, a.y+b.y, a.z+b.z)
+
+def vecs_sub(a:Vecs, b:Vecs) -> Vecs:
+	return Vecs(a.x-b.x, a.y-b.y, a.z-b.z)
+
+def vecs_dot_vecs(a:Vecs, b:Vecs) -> torch.Tensor:
+	return a.x * b.x + a.y * b.y + a.z * b.z
+
+def vecs_cross_vecs(a:Vecs, b:Vecs) -> Vecs:
+	return Vecs(a.y * b.z - a.z * b.y,
+				a.z * b.x - a.x * b.z,
+				a.x * b.y - a.y * b.x)
+
+def vecs_robust_norm(a:Vecs, eps=1e-8) -> torch.Tensor:
+	return torch.sqrt(torch.square(a.x) + torch.square(a.y) + torch.square(a.z) + eps)
+
+def vecs_robust_normalize(a:Vecs) -> Vecs:
+	norm = vecs_robust_norm(a)
+	return Vecs(a.x/norm, a.y/norm, a.z/norm)
 
 def rigids_mul_vecs(r:Rigids, v:Vecs) -> Rigids:
 	return vecs_add(rots_mul_vecs(r.rot, v), r.trans)
