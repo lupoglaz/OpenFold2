@@ -1,35 +1,17 @@
-from genericpath import exists
-import os
-import sys
-import pathlib
-from typing import Dict
 import argparse
-import random
-import time
 import subprocess
-import json
 from pathlib import Path
-import io
-import numpy as np
 import pickle
 import torch
+from alphafold.Data.dataset import get_fasta_stream, get_pdb_stream
+from alphafold.Data.pipeline import DataPipeline
 
-from alphafold.Model.alphafold import AlphaFold
-from alphafold.Model import model_config
-from alphafold.Model.features import AlphaFoldFeatures
-from alphafold.Model.Utils.weights_loading import params_to_torch
-from alphafold.Common import protein, residue_constants
-from alphafold.Data import pipeline
-
-
-
-if __name__ == '__main__':
+if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-fasta_path', default='T1024.fas', type=str)
-	# parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
-	parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
-	parser.add_argument('-model_name', default='model_1', type=str)
-	# parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
+	parser.add_argument('-fasta_dir', default='/media/HDD/AlphaFold2Dataset/Sequences', type=str)
+	parser.add_argument('-pdb_dir', default='/media/HDD/AlphaFold2Dataset/Structures', type=str)
+	parser.add_argument('-output_msa_dir', default='/media/HDD/AlphaFold2Dataset/Alignments', type=str)
+	parser.add_argument('-output_feat_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
 	
 	parser.add_argument('-jackhmmer_binary_path', default='jackhmmer', type=str)
@@ -48,12 +30,14 @@ if __name__ == '__main__':
 	
 	parser.add_argument('-max_template_date', default='2020-05-14', type=str)
 	parser.add_argument('-preset', default='reduced_dbs', type=str)
-	parser.add_argument('-benchmark', default=False, type=int)
-	parser.add_argument('-random_seed', default=None, type=int)
 	
 	args = parser.parse_args()
-	args.fasta_path = Path(args.fasta_path)
-	args.output_dir = Path(args.output_dir)
+	args.data_dir = Path(args.data_dir)
+	args.fasta_dir = Path(args.fasta_dir)
+	args.pdb_dir = Path(args.pdb_dir)
+	args.output_msa_dir = Path(args.output_msa_dir)
+	args.output_feat_dir = Path(args.output_feat_dir)
+
 	args.uniref90_database_path = Path(args.data_dir)/Path(args.uniref90_database_path)
 	args.mgnify_database_path = Path(args.data_dir)/Path(args.mgnify_database_path)
 	args.bfd_database_path = Path(args.data_dir)/Path(args.bfd_database_path)
@@ -66,8 +50,8 @@ if __name__ == '__main__':
 	args.hhblits_binary_path = Path(subprocess.run(["which", "hhblits"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
 	args.hhsearch_binary_path = Path(subprocess.run(["which", "hhsearch"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
 	args.kalign_binary_path = Path(subprocess.run(["which", "kalign"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
-		
-	data_pipeline = pipeline.DataPipeline(
+	
+	data_pipeline = DataPipeline(
 		jackhammer_binary_path=args.jackhmmer_binary_path,
 		hhblits_binary_path=args.hhblits_binary_path,
 		hhsearch_binary_path=args.hhsearch_binary_path,
@@ -80,53 +64,21 @@ if __name__ == '__main__':
 		template_featurizer=None,
 		use_small_bfd=True)
 
-	output_dir = args.output_dir / Path(args.fasta_path.stem)
-	output_dir.mkdir(parents=True, exist_ok=True)
-	output_msa_dir = output_dir / Path('MSA')
-	output_msa_dir.mkdir(parents=True, exist_ok=True)
-
-	feature_dict = data_pipeline.process(input_fasta_path=args.fasta_path, 
-										msa_output_dir=output_msa_dir)
-	with open(output_dir / Path('features.pkl'), 'wb') as f:
-		pickle.dump(feature_dict, f, protocol=4)
-	# with open(output_dir / Path('features.pkl'), 'rb') as f:
-	# 	feature_dict = pickle.load(f)
-
+	args.output_msa_dir.mkdir(parents=True, exist_ok=True)
+	args.output_feat_dir.mkdir(parents=True, exist_ok=True)
 	
-	config = model_config(args.model_name)
-	model_config = config.model
-	model_config.embeddings_and_evoformer.template.enabled = False
-	model_config.resample_msa_in_recycling = False
-	data_config = config.data
-	data_config.eval.num_ensemble = 1
-	data_config.common.use_templates = False
+	pdb_stream = get_pdb_stream(args.pdb_dir)
+	for pdb_path in pdb_stream:
+		pdb_path = Path(pdb_path[0][0]) #one worker
+		pdb_feature_dict, fasta_path = data_pipeline.process_pdb(
+										Path(pdb_path), 
+										fasta_output_dir=args.fasta_dir
+										)
+		msa_feature_dict = data_pipeline.process(input_fasta_path=fasta_path,
+											msa_output_dir=args.output_msa_dir,
+											feat_output_dir=None
+											)
+		feature_dict = {**msa_feature_dict, **pdb_feature_dict}
+		with open(args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl'), 'wb') as f:
+			pickle.dump(feature_dict, f, protocol=4)
 		
-	af2features = AlphaFoldFeatures(config=config)
-	batch = af2features(feature_dict, random_seed=42)
-	for key in batch.keys():
-		print(key, batch[key].shape)
-		batch[key] = batch[key][0].unsqueeze(dim=0).to(device='cuda')
-	
-	af2 = AlphaFold(config=model_config,
-					num_res=batch['target_feat'].shape[-2],
-					target_dim=batch['target_feat'].shape[-1], 
-					msa_dim=batch['msa_feat'].shape[-1],
-					extra_msa_dim=25)
-	
-	path = os.path.join(args.data_dir, 'params', f'params_{args.model_name}.npz')
-	with open(path, 'rb') as f:
-		params = np.load(io.BytesIO(f.read()), allow_pickle=False)
-	params = params_to_torch(params)
-	af2.load_weights_from_af2(params, rel_path='alphafold')
-	af2 = af2.cuda()
-	
-	with torch.no_grad():
-		prediction_result, _ = af2(batch, is_training=False)
-		with open(output_dir / Path('result.pkl'), 'wb') as f:
-			pickle.dump(prediction_result, f, protocol=4)
-		# with open('result.pkl', 'rb') as f:
-		# 	prediction_result = pickle.load(f)
-				
-		protein_pdb = protein.from_prediction(features=batch, result=prediction_result)
-		with open(output_dir / Path('test.pdb'), 'w') as f:
-			f.write(protein.to_pdb(protein_pdb))

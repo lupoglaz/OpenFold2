@@ -2,8 +2,12 @@ from pathlib import Path
 from typing import Mapping, Sequence, Any, Optional
 from alphafold.Data.Tools import HHSearch, HHBlits, Jackhammer
 from alphafold.Data import parsers
-from alphafold.Common import residue_constants
+from alphafold.Common import residue_constants, protein
 import numpy as np
+import pickle
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq
 
 FeatureDict = Mapping[str, np.ndarray]
 
@@ -83,8 +87,18 @@ class DataPipeline:
 			'num_alignments': np.array([num_alignments]*num_res, dtype=np.int32)
 		}
 
+	def process(self, input_fasta_path: Path, msa_output_dir: Path, feat_output_dir: Path=None) -> FeatureDict:
+		file_name = input_fasta_path.stem
+		with open(input_fasta_path) as f:
+			input_fasta_str = f.read()
+		input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
+		if len(input_seqs) != 1:
+			raise ValueError(f'DataPipeline: more than one sequence found {input_fasta_path}')
+		input_sequence = input_seqs[0]
+		input_description = input_descs[0]
+		num_res = len(input_sequence)
 
-	def process(self, input_fasta_path: Path, msa_output_dir: Path) -> FeatureDict:
+		file_name = input_fasta_path.stem
 		with open(input_fasta_path) as f:
 			input_fasta_str = f.read()
 		input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
@@ -100,11 +114,11 @@ class DataPipeline:
 		# uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(jackhmmer_uniref90_result['sto'], max_sequences=self.uniref_max_hits)
 		# hhsearch_result = self.hhsearch_pdb70_runner.query(uniref90_msa_as_a3m)
 
-		uniref90_out_path = msa_output_dir / Path('uniref90_hits.sto')
+		uniref90_out_path = msa_output_dir / Path(f'{file_name}_uniref90_hits.sto')
 		with open(uniref90_out_path, 'w') as f:
 			f.write(jackhmmer_uniref90_result['sto'])
 
-		mgnify_out_path = msa_output_dir / Path('mgnify_hits.sto')
+		mgnify_out_path = msa_output_dir / Path(f'{file_name}_mgnify_hits.sto')
 		with open(mgnify_out_path, 'w') as f:
 			f.write(jackhmmer_mgnify_result['sto'])
 
@@ -121,7 +135,7 @@ class DataPipeline:
 		if self._use_small_bfd:
 			jackhmmer_small_bfd_results = self.jackhmmer_small_bfd_runner.query(input_fasta_path)[0]
 		
-			bfd_out_path = msa_output_dir / Path('small_bfd_hits.sto')
+			bfd_out_path = msa_output_dir / Path(f'{file_name}_small_bfd_hits.sto')
 			with open(bfd_out_path, 'w') as f:
 				f.write(jackhmmer_small_bfd_results['sto'])
 			
@@ -129,32 +143,39 @@ class DataPipeline:
 		else:
 			raise NotImplementedError()
 
+		uniref90_out_path = msa_output_dir / Path(f'{file_name}_uniref90_hits.sto')
+		with open(uniref90_out_path, 'w') as f:
+			f.write(jackhmmer_uniref90_result['sto'])
+
 		sequence_features = self.make_sequence_features(sequence=input_sequence, description=input_description, num_res=num_res)
 		msa_features = self.make_msa_features(msas=(uniref90_msa, bfd_msa, mgnify_msa),
 											deletion_matrices=(uniref90_deletion_matrix, bfd_deletion_matrix, mgnify_deletion_matrix))
 		
-		return {**sequence_features, **msa_features}
+		feature_dict = {**sequence_features, **msa_features}
+		return feature_dict
 
-	def fast(self, input_fasta_path: Path, msa_output_dir: Path) -> FeatureDict:
-		with open(input_fasta_path) as f:
-			input_fasta_str = f.read()
-		input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
-		if len(input_seqs) != 1:
-			raise ValueError(f'DataPipeline: more than one sequence found {input_fasta_path}')
-		input_sequence = input_seqs[0]
-		input_description = input_descs[0]
-		num_res = len(input_sequence)
+	def process_pdb(self, pdb_path:Path, fasta_output_dir:Path=None):
+		assert pdb_path.exists()
 
-		jackhmmer_small_bfd_results = self.jackhmmer_small_bfd_runner.query(input_fasta_path)[0]
+		with open(pdb_path, 'r') as f:
+			pdb_string = f.read()
+		prot = protein.from_pdb_string(pdb_string)
+		feature_dict = {
+				"all_atom_positions": prot.atom_positions,
+				"all_atom_mask": prot.atom_mask
+			}
 		
-		bfd_out_path = msa_output_dir / Path('small_bfd_hits.sto')
-		with open(bfd_out_path, 'w') as f:
-			f.write(jackhmmer_small_bfd_results['sto'])
+		if not(fasta_output_dir is None):
+			sequence = ''.join([residue_constants.restypes_with_x[aatype] for aatype in prot.aatype])
+			seq_name = pdb_path.stem.upper()
+			fasta_path = fasta_output_dir / Path(f"{pdb_path.stem.lower()}.fasta")
+			with open(fasta_path, "w") as f:
+				record = SeqRecord(Seq(sequence), id=seq_name)
+				SeqIO.write(record, f, "fasta")
+			return feature_dict, fasta_path
+		else:
+			return feature_dict
+
 		
-		bfd_msa, bfd_deletion_matrix, _ = parsers.parse_stockholm(jackhmmer_small_bfd_results['sto'])
-		
-		sequence_features = self.make_sequence_features(sequence=input_sequence, description=input_description, num_res=num_res)
-		msa_features = self.make_msa_features(msas=(bfd_msa),
-											deletion_matrices=(bfd_deletion_matrix))
-		return {**sequence_features, **msa_features}
+
 
