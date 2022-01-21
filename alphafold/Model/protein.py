@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from alphafold.Model import affine
 from alphafold.Common import residue_constants
 from typing import Dict, Optional
-
+from alphafold.Model.Utils.tensor_utils import batched_gather
 import numpy as np
 
 
@@ -321,6 +321,7 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L114"""
 	aatype_in_shape = aatype.shape
 	aatype = aatype.view(-1)
+	batch_dims = len(aatype_in_shape[:-1])
 	all_atom_positions = all_atom_positions.view(-1, 37, 3)
 	all_atom_mask = all_atom_mask.view(-1, 37)
 	restype_rigidbody_base_atom_names = np.full([21, 8, 3], '', dtype=object)
@@ -333,33 +334,40 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 				atom_names = residue_constants.chi_angles_atoms[resname][chi_idx]
 				restype_rigidbody_base_atom_names[restype, chi_idx+4, :] = atom_names[1:]
 
-	restype_rigidgroup_mask = torch.zeros(21, 8, dtype=torch.float32)
+	restype_rigidgroup_mask = torch.zeros(21, 8, dtype=torch.float32, device=all_atom_mask.device)
 	restype_rigidgroup_mask[:, 0] = 1
 	restype_rigidgroup_mask[:, 3] = 1
-	restype_rigidgroup_mask[:20, 4:] = residue_constants.chi_angles_mask
+	restype_rigidgroup_mask[:20, 4:] = torch.tensor(residue_constants.chi_angles_mask, device=all_atom_mask.device)
 
 	lookuptable = residue_constants.atom_order.copy()
 	lookuptable[''] = 0
 	restype_rigidbody_base_atom_names = np.vectorize(lambda x: lookuptable[x])(restype_rigidbody_base_atom_names)
-	residx_regidgroup_base_atom37_idx = torch.gather(restype_rigidbody_base_atom_names, 0, aatype)
-	base_atom_pos = torch.gather(all_atom_positions, 1, residx_regidgroup_base_atom37_idx)
+	restype_rigidbody_base_atom_names = torch.from_numpy(restype_rigidbody_base_atom_names).to(device=aatype.device)
+	residx_rigidgroup_base_atom37_idx = batched_gather(restype_rigidbody_base_atom_names, aatype, dim=-3, no_batch_dims=batch_dims)
 
+	base_atom_pos = batched_gather(	all_atom_positions, residx_rigidgroup_base_atom37_idx, 
+									dim=-2, no_batch_dims=len(all_atom_positions.shape[:-2]))
+	
 	gt_frames = affine.rigids_from_3_points(
 				point_on_neg_axis=affine.vecs_from_tensor(base_atom_pos[:, :, 0, :]),
 				origin=affine.vecs_from_tensor(base_atom_pos[:, :, 1, :]),
 				point_on_xy_plane=affine.vecs_from_tensor(base_atom_pos[:, :, 2, :]))
-	group_exists = torch.gather(restype_rigidgroup_mask, aatype)
-	gt_atom_exists = torch.gather(all_atom_mask.to(dtype=torch.float32), 1, residx_regidgroup_base_atom37_idx)
-	#Double check!
-	gt_exists = torch.min(gt_atom_exists, dim=-1) * group_exists
-
-	rots = np.tile(np.eye(3), [8,1,1])
+	
+	group_exists = batched_gather(restype_rigidgroup_mask, aatype, dim=-2, no_batch_dims=batch_dims)
+	gt_atom_exists = batched_gather(all_atom_mask.to(dtype=torch.float32), residx_rigidgroup_base_atom37_idx, 
+									dim=-1, no_batch_dims=len(all_atom_positions.shape[:-2]))
+	
+	gt_exists = torch.min(gt_atom_exists, dim=-1)[0] * group_exists
+	
+	rots = torch.tile(	torch.eye(3, dtype=all_atom_mask.dtype, device=all_atom_mask.device), 
+						(*((1,)*batch_dims), 8,1,1) )
 	rots[0,0,0] = -1
 	rots[0,2,2] = -1
 	gt_frames = affine.rigids_mul_rots(gt_frames, affine.rots_from_tensor3x3(rots))
 
-	restype_rigidgroup_is_ambiguous = torch.zeros(21, 8, dtype=torch.float32)
-	restype_rigidgroup_rots = np.tile(np.eye(3, dtype=np.float32), [21, 8, 1, 1])
+	restype_rigidgroup_is_ambiguous = all_atom_mask.new_zeros(21, 8)
+	restype_rigidgroup_rots = torch.tile(torch.eye(3, dtype=all_atom_mask.dtype, device=all_atom_mask.device), 
+										(*((1,)*batch_dims),21, 8, 1, 1))
 
 	for resname, _ in residue_constants.residue_atom_renaming_swaps.items():
 		restype = residue_constants.restype_order[residue_constants.restype_3to1[resname]]
@@ -368,8 +376,9 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 		restype_rigidgroup_rots[restype, chi_idx + 4, 1, 1] = -1
 		restype_rigidgroup_rots[restype, chi_idx + 4, 2, 2] = -1
 
-	residx_rigidgroup_is_ambiguous = torch.gather(restype_rigidgroup_is_ambiguous, 0, aatype)
-	residx_rigidgroup_is_ambiguity_rot = torch.gather(restype_rigidgroup_rots, 0, aatype)
+	
+	residx_rigidgroup_is_ambiguous = batched_gather(restype_rigidgroup_is_ambiguous, aatype, dim=-2, no_batch_dims=batch_dims)
+	residx_rigidgroup_is_ambiguity_rot = batched_gather(restype_rigidgroup_rots, aatype, dim=-4, no_batch_dims=batch_dims)
 
 	alt_gt_frames = affine.rigids_mul_rots(gt_frames, affine.rots_from_tensor3x3(residx_rigidgroup_is_ambiguity_rot))
 	gt_frames_flat12 = affine.rigids_to_tensor_flat12(gt_frames)
@@ -393,7 +402,7 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 def atom37_to_torsion_angles(aatype:torch.Tensor, all_atom_pos:torch.Tensor, all_atom_mask:torch.Tensor,
 							placeholder_for_undefined=False):
 	"""https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/all_atom.py#L271"""
-	aatype = torch.minimum(aatype, 20)
+	aatype = torch.minimum(aatype.unsqueeze(dim=0), aatype.new_tensor([20]))
 	num_batch, num_res = aatype.shape
 
 	pad = torch.zeros(num_batch, 1, 37, 3, dtype=torch.float32)

@@ -2,13 +2,15 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 from ml_collections import ConfigDict
-from typing import Sequence
+from typing import Sequence, Callable
 from collections import OrderedDict
+import pickle
 
 class GeneralFileData(Dataset):
-	def __init__(self, dir:Path, allowed_suffixes:Sequence[str]=None):
+	def __init__(self, dir:Path, allowed_suffixes:Sequence[str]=None, data_proc_func:Callable=None):
 		if dir is None:
 			return
+		self.data_proc_func = data_proc_func
 		self.dir = dir
 		self.data = {}
 		self.keys = []
@@ -25,7 +27,11 @@ class GeneralFileData(Dataset):
 		
 	def __getitem__(self, index) -> Path:
 		key = self.keys[index]
-		return self.data[key]
+		data = self.data[key]
+		if not(self.data_proc_func is None):
+			return self.data_proc_func(data)
+		else:
+			return data
 
 	def __len__(self):
 		return len(self.keys)
@@ -45,6 +51,18 @@ def get_pdb_stream(pdb_dir:Path, batch_size:int=1):
 	assert pdb_dir.exists()
 	data = GeneralFileData(pdb_dir, allowed_suffixes=['.pdb'])
 	return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0)
+
+
+
+def get_data_stream(data_dir:Path, batch_size:int=1):
+	assert data_dir.exists()
+	def load_pkl(file_path):
+		with open(file_path[0], 'rb') as f:
+			return pickle.load(f)
+	def dict_collate(data):
+		return data[0]
+	data = GeneralFileData(data_dir, allowed_suffixes=['.pkl'], data_proc_func=load_pkl)
+	return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0, collate_fn=dict_collate)
 
 
 class OpenFold2Dataset(Dataset):

@@ -40,8 +40,8 @@ def rigids_from_tensor4x4(m:torch.Tensor) -> Rigids:
 					Vecs(	m[..., 0, 3], m[..., 1, 3], m[..., 2, 3]))
 
 def rigids_from_3_points(point_on_neg_axis:Vecs, origin:Vecs, point_on_xy_plane:Vecs):
-	m = rots_from_two_vecs(e0 = vecs_sub(origin, point_on_neg_axis),
-							e1 = vecs_sub(point_on_xy_plane, origin))
+	m = rots_from_two_vecs(e0_unnormalized = vecs_sub(origin, point_on_neg_axis),
+							e1_unnormalized = vecs_sub(point_on_xy_plane, origin))
 	return Rigids(rot=m, trans=origin)
 
 def vecs_from_tensor(x: torch.Tensor) -> Vecs:

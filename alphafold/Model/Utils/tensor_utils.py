@@ -22,3 +22,18 @@ def tree_map(fn, tree):
 	if isinstance(tree, torch.Tensor):
 		return fn(tree)
 	raise(ValueError(f'Not supported {type(tree)}'))
+
+def batched_gather(data, inds, dim=0, no_batch_dims=0):
+	"""https://github.com/aqlaboratory/openfold/blob/5037b3d029efcc9eeb3f5f33eedd4ecdd27ca962/openfold/utils/tensor_utils.py#L67"""
+	ranges = []
+	for i, s in enumerate(data.shape[:no_batch_dims]):
+		r = torch.arange(s)
+		r = r.view(*(*((1,) * i), -1, *((1,) * (len(inds.shape) - i - 1))))
+		ranges.append(r)
+
+	remaining_dims = [
+		slice(None) for _ in range(len(data.shape) - no_batch_dims)
+	]
+	remaining_dims[dim - no_batch_dims if dim >= 0 else dim] = inds
+	ranges.extend(remaining_dims)
+	return data[ranges]
