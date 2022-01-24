@@ -10,8 +10,10 @@ from alphafold.Model import model_config
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
-	parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
+	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
 	parser.add_argument('-model_name', default='model_1', type=str)
 
 	args = parser.parse_args()
