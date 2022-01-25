@@ -83,9 +83,10 @@ def OuterProductMeanTest(args, config, global_config):
 	attn_vanilla.load_weights_from_af2(params, 'outer_product_mean')
 	
 	attn_vanilla.cuda()
-	feat['msa_act'] = feat['msa_act'].to(device='cuda', dtype=torch.float32)
-	feat['msa_mask'] = feat['msa_mask'].to(device='cuda', dtype=torch.float32)
+	feat['msa_act'] = feat['msa_act'].to(device='cuda', dtype=torch.float32)[:,:127,:]
+	feat['msa_mask'] = feat['msa_mask'].to(device='cuda', dtype=torch.float32)[:,:127]
 		
+			
 	alloc_start_vanilla = get_total_alloc()
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('OuterProductMean'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
@@ -119,7 +120,7 @@ def TransitionTest(args, config, global_config):
 	attn_vanilla.cuda()
 	feat['seq_act'] = feat['seq_act'].to(device='cuda', dtype=torch.float32)
 	feat['seq_mask'] = feat['seq_mask'].to(device='cuda', dtype=torch.float32)
-	
+		
 	alloc_start_vanilla = get_total_alloc()
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('Transition'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:

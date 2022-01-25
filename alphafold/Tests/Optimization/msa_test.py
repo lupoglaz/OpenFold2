@@ -90,9 +90,12 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
 	
 	attn_vanilla.cuda()
-	feat['msa_act'] = feat['msa_act'].to(device='cuda', dtype=torch.float32)
-	feat['pair_act'] = feat['pair_act'].to(device='cuda', dtype=torch.float32)
-	feat['msa_mask'] = feat['msa_mask'].to(device='cuda', dtype=torch.float32)
+	feat['msa_act'] = feat['msa_act'].to(device='cuda', dtype=torch.float32)#[:63,:,:]
+	feat['pair_act'] = feat['pair_act'].to(device='cuda', dtype=torch.float32)#[:63,:,:]
+	feat['msa_mask'] = feat['msa_mask'].to(device='cuda', dtype=torch.float32)#[:63,:]
+	# print(feat['pair_act'].size())
+	# print(feat['msa_act'].size())
+	# print(feat['msa_mask'].size())
 	with torch.no_grad():
 		alloc_start_vanilla = get_total_alloc()
 		handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('MSARowAttentionWithPairBias'))
@@ -185,4 +188,4 @@ if __name__=='__main__':
 	# GlobalAttentionTest(args, config, global_config)
 	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
-	MSAColumnGlobalAttentionTest(args, config, global_config)
+	# MSAColumnGlobalAttentionTest(args, config, global_config)

@@ -3,6 +3,7 @@ import torch
 from typing import Any, Callable, Optional, Sequence, Union
 from alphafold.Model.Utils.tensor_utils import tree_map
 from functools import reduce
+import torch.nn.functional as F
 
 PYTREE = Any
 PYTREE_TORCH_ARRAY = Any
@@ -16,10 +17,27 @@ class ShardIterator:
 		self.num_chunks = [(x.shape[dim] // shard_size) + int((x.shape[dim] % shard_size) != 0) for x in batched_args]
 		self.flat_num_chunks = reduce(lambda x,y: x*y, [sz for sz in self.num_chunks])
 		
-		
+		pad = [x.shape[dim] % shard_size != 0 for x in batched_args]
+		# pad_sizes = [shard_size - (x.shape[dim] % shard_size) for x in batched_args]
+		padded_args = []
+		for arg, pad in zip(batched_args, pad):
+			if pad:
+				dim_indexes = list(range(len(arg.shape)))
+				dim_indexes.reverse()
+				pad_size = [(0, shard_size - (arg.shape[dim] % shard_size)) if i==0 else (0, 0) for i in dim_indexes]
+				pad_size = reduce(lambda x,y: x+y, pad_size)
+				padded_arg = F.pad(arg, pad_size, mode='constant', value=0.0)
+				padded_args.append(padded_arg)
+			else:
+				padded_args.append(arg)
+
+		self.padded_shapes = [x.shape[dim] for x in padded_args]
+		self.padded_flat_size = reduce(lambda x,y: x*y, [sz for sz in self.padded_shapes])
+
 		self.chunked_args = []
-		for tensor, n_chunks in zip(batched_args, self.num_chunks):
+		for tensor, n_chunks in zip(padded_args, self.num_chunks):
 			self.chunked_args.append(list(torch.chunk(tensor, n_chunks, dim=dim)))
+		
 		
 		self.remainder_num_chunks = []
 		self.remainder_size = []
@@ -69,8 +87,24 @@ class SimpleShardIterator:
 		self.num_chunks = batched_args[0].shape[dim] // shard_size + int((batched_args[0].shape[dim] % shard_size) != 0)
 		self.flat_size = batched_args[0].shape[dim]
 		
+		pad = batched_args[0].shape[dim] % shard_size != 0
+		padded_args = []
+		for arg in batched_args:
+			if pad:
+				dim_indexes = list(range(len(arg.shape)))
+				dim_indexes.reverse()
+				pad_size = [(0, shard_size - (arg.shape[dim] % shard_size)) if i==0 else (0, 0) for i in dim_indexes]
+				pad_size = reduce(lambda x,y: x+y, pad_size)
+				padded_arg = F.pad(arg, pad_size, mode='constant', value=0.0)
+				padded_args.append(padded_arg)
+			else:
+				padded_args.append(arg)
+
+		self.padded_shapes = [x.shape for x in padded_args]
+		self.padded_flat_size = padded_args[0].shape[dim]
+		
 		self.chunked_args = []
-		for tensor in batched_args:
+		for tensor in padded_args:
 			self.chunked_args.append(list(torch.chunk(tensor, self.num_chunks, dim=dim)))
 					
 		#All chunks are the same
@@ -128,6 +162,9 @@ def inference_subbatch(	module:Callable[..., PYTREE_TORCH_ARRAY],
 	output = None
 	
 	if not(output_subbatch_dims is None):
+		assert output_subbatch_dims[0] == 0
+		assert output_subbatch_dims[1] == 1
+		assert input_subbatch_dim == 0
 		shards = ShardIterator(batched_args, subbatch_size, input_subbatch_dim)
 	else:
 		shards = SimpleShardIterator(batched_args, subbatch_size, input_subbatch_dim)
@@ -138,14 +175,17 @@ def inference_subbatch(	module:Callable[..., PYTREE_TORCH_ARRAY],
 		# print('output_chunk', output_chunk.size(), flat_slice)
 		if output is None:
 			if output_subbatch_dims is None:
+				output_flat_padded_shape = (shards.padded_flat_size,) + output_chunk.shape[1:]
 				output_flat_shape = (shards.flat_size,) + output_chunk.shape[1:]
-				output_shape = output_flat_shape
+				output_shape = (shards.flat_size,) + output_chunk.shape[1:]
 			else:
+				output_flat_padded_shape = (shards.padded_flat_size,) + output_chunk.shape[len(output_subbatch_dims):]
 				output_flat_shape = (shards.flat_size,) + output_chunk.shape[len(output_subbatch_dims):]
+				output_padded_shape = tuple(shards.padded_shapes) + output_chunk.shape[len(output_subbatch_dims):]
 				output_shape = tuple(shards.shapes) + output_chunk.shape[len(output_subbatch_dims):]
 
 			if isinstance(output_chunk, torch.Tensor):
-				output = output_chunk.new_zeros(output_flat_shape)
+				output = output_chunk.new_zeros(output_flat_padded_shape)
 				# print('Output', output.size())
 			else:
 				raise(NotImplementedError())
@@ -163,6 +203,10 @@ def inference_subbatch(	module:Callable[..., PYTREE_TORCH_ARRAY],
 		current_output_shape = tuple(shards.num_chunks) + (subbatch_size, subbatch_size) + output_chunk.shape[len(output_subbatch_dims):]
 		output = output.view(current_output_shape)
 		output = output.transpose(1,2).contiguous()
+		output = output.view(shards.padded_shapes[0], shards.padded_shapes[0], -1)
+		output = output[:output_shape[0], :output_shape[1], ...]
+	else:
+		output = output[:shards.flat_size, ...]
 
 	return output.view(output_shape)
 

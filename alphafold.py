@@ -25,12 +25,13 @@ from alphafold.Data import pipeline
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-fasta_path', default='T1024.fas', type=str)
-	# parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
-	parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
+	parser.add_argument('-fasta_path', default='1wmg_1_a.fas', type=str)
+	parser.add_argument('-feature_path', default='/media/lupoglaz/AlphaFold2Dataset/Features/1wmg_1_a_features.pkl', type=str)
+	parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
+	# parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
 	parser.add_argument('-model_name', default='model_1', type=str)
-	# parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
-	parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
+	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
 	
 	parser.add_argument('-jackhmmer_binary_path', default='jackhmmer', type=str)
 	parser.add_argument('-hhblits_binary_path', default='hhblits', type=str)
@@ -54,6 +55,7 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	args.fasta_path = Path(args.fasta_path)
 	args.output_dir = Path(args.output_dir)
+	args.feature_path = Path(args.feature_path)
 	args.uniref90_database_path = Path(args.data_dir)/Path(args.uniref90_database_path)
 	args.mgnify_database_path = Path(args.data_dir)/Path(args.mgnify_database_path)
 	args.bfd_database_path = Path(args.data_dir)/Path(args.bfd_database_path)
@@ -85,12 +87,14 @@ if __name__ == '__main__':
 	output_msa_dir = output_dir / Path('MSA')
 	output_msa_dir.mkdir(parents=True, exist_ok=True)
 
-	feature_dict = data_pipeline.process(input_fasta_path=args.fasta_path, 
-										msa_output_dir=output_msa_dir)
-	with open(output_dir / Path('features.pkl'), 'wb') as f:
-		pickle.dump(feature_dict, f, protocol=4)
-	# with open(output_dir / Path('features.pkl'), 'rb') as f:
-	# 	feature_dict = pickle.load(f)
+	if not args.feature_path.exists():
+		feature_dict = data_pipeline.process(input_fasta_path=args.fasta_path, 
+											msa_output_dir=output_msa_dir)
+		with open(output_dir / Path('features.pkl'), 'wb') as f:
+			pickle.dump(feature_dict, f, protocol=4)
+	else:
+		with open(args.feature_path, 'rb') as f:
+			feature_dict = pickle.load(f)
 
 	
 	config = model_config(args.model_name)

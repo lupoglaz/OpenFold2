@@ -3,9 +3,10 @@ import subprocess
 from pathlib import Path
 import pickle
 import torch
-from alphafold.Data.dataset import get_fasta_stream, get_pdb_stream, get_data_stream
+from alphafold.Data.dataset import GeneralFileData, get_stream
 from alphafold.Data.pipeline import DataPipeline
 from alphafold.Model.features import AlphaFoldFeatures
+from alphafold.Model.alphafold import AlphaFold
 from alphafold.Model import model_config
 
 if __name__=='__main__':
@@ -27,11 +28,21 @@ if __name__=='__main__':
 	data_config = config.data
 	data_config.eval.num_ensemble = 1
 	data_config.common.use_templates = False
-	af2features = AlphaFoldFeatures(config=config, device='cuda:0', is_training=True)
+	af2features = AlphaFoldFeatures(config=config, device='cuda:0', is_training=False)
 
-	data_stream = get_data_stream(args.dataset_dir)
-	for feature_dict in data_stream:
-		print(feature_dict.keys())
+	af2 = AlphaFold(config=model_config,
+					num_res=256,
+					target_dim=batch['target_feat'].shape[-1], 
+					msa_dim=batch['msa_feat'].shape[-1],
+					extra_msa_dim=25)
+	
+	def load_pkl(file_path):
+		with open(file_path[0], 'rb') as f:
+			return pickle.load(f)
+	data = GeneralFileData(args.dataset_dir, allowed_suffixes=['.pkl'])
+	data_stream = get_stream(data, batch_size=1)
+	for [data_path] in data_stream:
+		feature_dict = load_pkl(data_path)
 		batch = af2features(feature_dict, random_seed=42)
 		for key in batch.keys():
 			print(key, batch[key].shape)

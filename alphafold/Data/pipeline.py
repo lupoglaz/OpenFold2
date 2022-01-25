@@ -165,16 +165,17 @@ class DataPipeline:
 				"all_atom_mask": prot.atom_mask
 			}
 		
+		sequence = ''.join([residue_constants.restypes_with_x[aatype] for aatype in prot.aatype])
+
 		if not(fasta_output_dir is None):
-			sequence = ''.join([residue_constants.restypes_with_x[aatype] for aatype in prot.aatype])
 			seq_name = pdb_path.stem.upper()
 			fasta_path = fasta_output_dir / Path(f"{pdb_path.stem.lower()}.fasta")
 			with open(fasta_path, "w") as f:
 				record = SeqRecord(Seq(sequence), id=seq_name)
 				SeqIO.write(record, f, "fasta")
-			return feature_dict, fasta_path
+			return feature_dict, sequence, fasta_path
 		else:
-			return feature_dict
+			return feature_dict, sequence
 
 		
 
