@@ -46,7 +46,7 @@ class DistogramHead(nn.Module):
 	def forward(self, representations:Dict[str,torch.Tensor], batch:Dict[str,torch.Tensor], is_training:bool=False):
 		half_logits = self.half_logits(representations['pair'])
 		logits = half_logits + half_logits.transpose(-2, -3)
-		breaks = torch.linspace(start=self.config.first_break, end=self.config.last_break, steps=self.config.num_bins-1)
+		breaks = torch.linspace(start=self.config.first_break, end=self.config.last_break, steps=self.config.num_bins-1, device=logits.device, dtype=logits.dtype)
 		return dict(logits=logits, bin_edges=breaks)
 
 	def loss(self, value:Dict[str,torch.Tensor], batch:Dict[str,torch.Tensor])->Dict[str,torch.Tensor]:
@@ -54,6 +54,7 @@ class DistogramHead(nn.Module):
 		bin_edges = value['bin_edges']
 		positions = batch['pseudo_beta']
 		mask = batch['pseudo_beta_mask']
+		
 
 		assert logits.ndimension() == 3
 		assert positions.size(-1) == 3
@@ -62,9 +63,10 @@ class DistogramHead(nn.Module):
 		dist2 = torch.sum(torch.square(positions.unsqueeze(dim=-2) - positions.unsqueeze(dim=-3)), dim=-1, keepdim=True)
 		
 		true_bins = torch.sum(dist2>sq_breaks, dim=-1)
-		errors = self.loss_function(logits, true_bins)
+		errors = self.loss_function(logits.view(-1, self.config.num_bins), true_bins.view(-1))
 		square_mask = mask.unsqueeze(dim=-2) * mask.unsqueeze(dim=-1)
-
+		errors = errors.view(positions.size(-2), positions.size(-2))
+		
 		avg_error = torch.sum(errors*square_mask, dim=(-2,-1))/(1e-8 + torch.sum(square_mask, dim=(-2,-1)))
 		dist2 = dist2[...,0]
 		return dict(loss=avg_error, true_dist=torch.sqrt(1e-6 + dist2))

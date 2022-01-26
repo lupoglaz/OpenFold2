@@ -219,9 +219,8 @@ class AlphaFoldIteration(nn.Module):
 		head_dict = {
 			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),
 			'distogram': (functools.partial(DistogramHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
-			'structure_module': (functools.partial(StructureModule, num_res=num_res, 
-								num_feat_1d=evo_conf.seq_channel, num_feat_2d=evo_conf.pair_channel, 
-								compute_loss=compute_loss), self.HIGH),
+			'structure_module': (functools.partial(StructureModule, num_feat_1d=evo_conf.seq_channel, 
+								num_feat_2d=evo_conf.pair_channel, compute_loss=compute_loss), self.HIGH),
 			'predicted_lddt': (functools.partial(PredictedLDDTHead, num_feat_1d=evo_conf.seq_channel), self.LOW),
 			'predicted_aligned_error': (functools.partial(PredictedAlignedErrorHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
 			'experimentally_resolved': (functools.partial(ExperimentallyResolvedHead, num_feat_1d=evo_conf.seq_channel), self.LOW)
@@ -256,7 +255,7 @@ class AlphaFoldIteration(nn.Module):
 		batch0 = {k:v[0] for k,v in ensembled_batch.items()}
 		non_ensembled_batch.update(batch0)
 		representations = self.evoformer_module(batch0, is_training)
-
+		
 		# msa_representations = representations['msa']
 		# del representations['msa']
 
@@ -273,11 +272,12 @@ class AlphaFoldIteration(nn.Module):
 			else:
 				value = ret
 			loss_output = module.loss(value, batch)
+			print(ret.keys())
 			ret[name].update(loss_output)
 			loss = head_config.weight * ret[name]['loss']
 			return loss
 		
-		for (name, priority), head in zip(self.head_order, self.heads):	
+		for (name, priority), head in zip(self.head_order, self.heads):
 			head_config = self.config.heads[name]
 			ret[name] = head(representations, batch, is_training)
 			if 'representations' in ret[name]:

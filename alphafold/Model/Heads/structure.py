@@ -8,20 +8,20 @@ from math import sqrt
 from collections import namedtuple
 
 from alphafold.Common import residue_constants
-from alphafold.Model.affine import QuatAffine, rigids_apply, vecs_to_tensor, rigids_from_tensor_flat12, vecs_from_tensor
+from alphafold.Model.affine import QuatAffine, rigids_apply, vecs_apply, vecs_to_tensor, rigids_from_tensor_flat12, vecs_from_tensor
 from alphafold.Model import protein
+from alphafold.Model.Utils.tensor_utils import batched_gather
 
 class InvariantPointAttention(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/folding.py#L37
 	"""
-	def __init__(self, config, global_config, num_res:int, num_feat_2d:int, num_feat_1d:int, dist_epsilon:float=1e-8) -> None:
+	def __init__(self, config, global_config, num_feat_2d:int, num_feat_1d:int, dist_epsilon:float=1e-8) -> None:
 		super(InvariantPointAttention, self).__init__()
 		self.config = config
 		self.global_config = global_config
 		self._dist_epsilon = dist_epsilon
 
-		self.num_res = num_res
 		self.num_head = self.config.num_head
 		self.num_scalar_qk = self.config.num_scalar_qk
 		self.num_scalar_v = self.config.num_scalar_v
@@ -70,22 +70,23 @@ class InvariantPointAttention(nn.Module):
 		self.trainable_point_weights.data.copy_(torch.from_numpy(d))
 		
 	def forward(self, inputs_1d:torch.Tensor, inputs_2d:torch.Tensor, mask:torch.Tensor, affine) -> torch.Tensor:
+		num_res = inputs_1d.size(0)
 		q_scalar = self.q_scalar(inputs_1d)
-		q_scalar = q_scalar.view(self.num_res, self.num_head, self.num_scalar_qk)
+		q_scalar = q_scalar.view(num_res, self.num_head, self.num_scalar_qk)
 
 		kv_scalar = self.kv_scalar(inputs_1d)
-		kv_scalar = kv_scalar.view(self.num_res, self.num_head, self.num_scalar_v + self.num_scalar_qk)
+		kv_scalar = kv_scalar.view(num_res, self.num_head, self.num_scalar_v + self.num_scalar_qk)
 		k_scalar, v_scalar = kv_scalar.split(self.num_scalar_qk, dim=-1)
 
 		q_point_local = self.q_point_local(inputs_1d)
 		q_point_local = q_point_local.split(self.num_head * self.num_point_qk, dim=-1)
 		q_point_global = affine.apply_to_point(q_point_local, extra_dims=1)
-		q_point = [x.view(self.num_res, self.num_head, self.num_point_qk) for x in q_point_global]
+		q_point = [x.view(num_res, self.num_head, self.num_point_qk) for x in q_point_global]
 		
 		kv_point_local = self.kv_point_local(inputs_1d)
 		kv_point_local = kv_point_local.split(self.num_head * (self.num_point_qk + self.num_point_v), dim=-1)
 		kv_point_global = affine.apply_to_point(kv_point_local, extra_dims=1)
-		kv_point_global = [x.view(self.num_res, self.num_head, self.num_point_qk + self.num_point_v) for x in kv_point_global]
+		kv_point_global = [x.view(num_res, self.num_head, self.num_point_qk + self.num_point_v) for x in kv_point_global]
 		k_point, v_point = list(zip(*[(x[:,:,:self.num_point_qk], x[:,:,self.num_point_qk:]) for x in kv_point_global]))
 		
 		point_weights = self.softplus(self.trainable_point_weights).unsqueeze(dim=1) * self.point_weights
@@ -114,10 +115,10 @@ class InvariantPointAttention(nn.Module):
 		result_point_global = [torch.sum(attn[:,:,:,None]*vx[:,None,:,:], dim=-2).transpose(-2, -3) for vx in v_point]
 
 		output_features = []
-		result_scalar = result_scalar.reshape(self.num_res, self.num_head*self.num_scalar_v)
+		result_scalar = result_scalar.reshape(num_res, self.num_head*self.num_scalar_v)
 		output_features.append(result_scalar)
 		
-		result_point_global = [r.reshape(self.num_res, self.num_head*self.num_point_v) for r in result_point_global]
+		result_point_global = [r.reshape(num_res, self.num_head*self.num_point_v) for r in result_point_global]
 		result_point_local = affine.invert_point(result_point_global, extra_dims=1)
 		output_features.extend(result_point_local)
 		
@@ -129,7 +130,7 @@ class InvariantPointAttention(nn.Module):
 
 		result_attention_over_2d = torch.einsum('hij,ijc->ihc', attn, inputs_2d)
 		num_out = self.num_head * result_attention_over_2d.shape[-1]
-		output_features.append(result_attention_over_2d.view(self.num_res, num_out))
+		output_features.append(result_attention_over_2d.view(num_res, num_out))
 		final_act = torch.cat(output_features, dim=-1)
 		
 		return self.output_pojection(final_act)
@@ -212,13 +213,13 @@ class FoldIteration(nn.Module):
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/folding.py#L281
 	"""
 	affine_update_size = 6
-	def __init__(self, config, global_config, num_res:int, num_feat_1d:int, num_feat_2d:int) -> None:
+	def __init__(self, config, global_config, num_feat_1d:int, num_feat_2d:int) -> None:
 		super(FoldIteration, self).__init__()
 		self.config = config
 		self.global_config = global_config
 
 		self.attention_module = InvariantPointAttention(config, global_config, 
-								num_res=num_res, num_feat_1d=num_feat_1d, num_feat_2d=num_feat_2d)
+								num_feat_1d=num_feat_1d, num_feat_2d=num_feat_2d)
 		self.attention_layer_norm = nn.LayerNorm(num_feat_1d)
 		self.transition = nn.ModuleList([nn.Linear(self.config.num_channel, self.config.num_channel) 
 										for i in range(self.config.num_layer_in_transition)])
@@ -321,7 +322,7 @@ class StructureModule(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/folding.py#L464
 	"""
-	def __init__(self, config, global_config, num_res:int, num_feat_1d:int, num_feat_2d:int, compute_loss:bool=False) -> None:
+	def __init__(self, config, global_config, num_feat_1d:int, num_feat_2d:int, compute_loss:bool=False) -> None:
 		super(StructureModule, self).__init__()
 		self.config = config
 		self.global_config = global_config
@@ -331,7 +332,7 @@ class StructureModule(nn.Module):
 		self.pair_layer_norm = nn.LayerNorm(num_feat_2d)
 		self.initial_projection = nn.Linear(num_feat_1d, self.config.num_channel)
 
-		self.fold_iteration = FoldIteration(config, global_config, num_res, num_feat_1d, num_feat_2d)
+		self.fold_iteration = FoldIteration(config, global_config, num_feat_1d, num_feat_2d)
 
 	def load_weights_from_af2(self, data, rel_path: str='structure_module', ind:int=None):
 		modules=[self.initial_projection]
@@ -435,7 +436,7 @@ class StructureModule(nn.Module):
 			return {k: ret[k] for k in {'final_atom_positions', 'final_atom_mask', 'representations'}}
 
 	def loss(self, value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]):
-		ret = { 'value': 0.0,
+		ret = { 'loss': 0.0,
 				'metrics': {}
 				}
 		if self.config.compute_in_graph_metrics:
@@ -445,21 +446,22 @@ class StructureModule(nn.Module):
 			violation_metrics = self.compute_violation_metrics(batch, atom14_pred_positions, value['violations'])
 			ret['metrics'].update(violation_metrics)
 		
-		self.backbone_loss(ret, batch, value, self.config)
+		self.backbone_loss(ret, value, batch)
 
 		if not('renamed_atom14_gt_positions' in value):
 			value.update(self.compute_renamed_ground_truth(batch, atom14_pred_positions))
-		sc_loss = self.sidechain_loss(batch, value, self.config)
+		sc_loss = self.sidechain_loss(value, batch)
 
 		ret['loss'] = ((1.0 - self.config.sidechain.weight_frac)*ret['loss'] + self.config.sidechain.weight_frac*sc_loss['loss'])
 		ret['sidechain_fape'] = sc_loss['loss']
 
-		self.supervised_chi_loss(ret, batch, value, self.config)
+		self.supervised_chi_loss(ret, value, batch)
 
 		if self.config.structural_violation_loss_weight:
 			if not('violations' in value):
 				value['violations'] = self.find_structural_violations(batch, atom14_pred_positions)
-			self.structural_violation_loss(ret, batch, value, self.config)
+			self.structural_violation_loss(ret, value, batch)
+		return ret
 
 	def compute_renamed_ground_truth(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor)->Dict[str, torch.Tensor]:
 		"""
@@ -470,17 +472,16 @@ class StructureModule(nn.Module):
 			atom14_alt_gt_positions=batch['atom14_alt_gt_positions'],
 			atom14_atom_is_ambiguous=batch['atom14_atom_is_ambiguous'],
 			atom14_gt_exists=batch['atom14_gt_exists'],
-			atom14_pred_positions=batch['atom14_pred_positions'],
-			atom14_pred_exists=batch['atom14_pred_exists'])
+			atom14_pred_positions=atom14_pred_positions,
+			atom14_pred_exists=batch['atom14_atom_exists'])
 		
 		renamed_atom14_gt_positions = (1.0 - alt_naming_is_better[:,None,None])*batch['atom14_gt_positions'] + \
 										alt_naming_is_better[:,None,None]*batch['atom14_alt_gt_positions']
-		renamed_atom14_gt_mask = (1.0 - alt_naming_is_better[:,None,None])*batch['atom14_gt_exists'] + \
-										alt_naming_is_better[:,None,None]*batch['atom14_gt_exists']
-		
+		renamed_atom14_gt_mask = (1.0 - alt_naming_is_better[:,None])*batch['atom14_gt_exists'] + \
+										alt_naming_is_better[:,None]*batch['atom14_gt_exists']
 		return {'alt_naming_is_better': alt_naming_is_better, 
 				'renamed_atom14_gt_positions': renamed_atom14_gt_positions,
-				'renamed_atom14_exists': renamed_atom14_gt_mask}
+				'renamed_atom14_gt_exists': renamed_atom14_gt_mask}
 
 	def find_structural_violations(self, batch:Dict[str, torch.Tensor], atom14_pred_positions:torch.Tensor)->Dict[str, torch.Tensor]:
 		"""
@@ -494,9 +495,9 @@ class StructureModule(nn.Module):
 			tolerance_factor_soft=self.config.violation_tolerance_factor,
 			tolerance_factor_hard=self.config.violation_tolerance_factor
 		)
-		atomtype_radius = torch.Tensor([residue_constants.van_der_waals_radius[name[0]] for name in residue_constants.atom_types])
-		atom14_atom_radius = batch['atom14_atom_exists'] * torch.gather(atomtype_radius, dim=0, index=batch['residx_atom14_to_atom37'])
-
+		atomtype_radius = atom14_pred_positions.new_tensor([residue_constants.van_der_waals_radius[name[0]] for name in residue_constants.atom_types])
+		atom14_atom_radius = batch['atom14_atom_exists'] * batched_gather(atomtype_radius, batch['residx_atom14_to_atom37'])
+		
 		between_residue_clashes = protein.between_residue_clash_loss(
 			atom14_pred_positions=atom14_pred_positions,
 			atom14_atom_exists=batch['atom14_atom_exists'].to(dtype=torch.float32),
@@ -507,12 +508,12 @@ class StructureModule(nn.Module):
 		)
 
 		restype_atom14_bounds = residue_constants.make_atom14_dists_bounds(
-			overlap_tolerance=self.conf.clash_overlap_tolerance,
-			bond_length_tolerance_factor=self.conf.violation_tolerance_factor
+			overlap_tolerance=self.config.clash_overlap_tolerance,
+			bond_length_tolerance_factor=self.config.violation_tolerance_factor
 		)
 		aatypes = batch['aatype'].to(dtype=torch.long)
-		atom14_dists_lower_bound = torch.gather(restype_atom14_bounds['lower_bound'], dim=0, index=aatypes)
-		atom14_dists_upper_bound = torch.gather(restype_atom14_bounds['upper_bound'], dim=0, index=aatypes)
+		atom14_dists_lower_bound = batched_gather(torch.from_numpy(restype_atom14_bounds['lower_bound']).to(device=aatypes.device), aatypes)
+		atom14_dists_upper_bound = batched_gather(torch.from_numpy(restype_atom14_bounds['upper_bound']).to(device=aatypes.device), aatypes)
 		within_residue_violations = protein.within_residue_violations(
 			atom14_pred_positions=atom14_pred_positions, 
 			atom14_atom_exists=batch['atom14_atom_exists'].to(dtype=torch.float32), 
@@ -524,11 +525,11 @@ class StructureModule(nn.Module):
 			connection_violations['per_residue_violation_mask'],
 			torch.max(between_residue_clashes['per_atom_clash_mask'], dim=-1).values,
 			torch.max(within_residue_violations['per_atom_violations'], dim=-1).values]), dim=0).values
-
+		
 		return {'between_residues': {
-					'bonds_c_n_loss_mean': connection_violations['c_n_loss_mean'],  # ()
-					'angles_ca_c_n_loss_mean': connection_violations['ca_c_n_loss_mean'],  # ()
-					'angles_c_n_ca_loss_mean': connection_violations['c_n_ca_loss_mean'],  # ()
+					'bonds_c_n_loss_mean': connection_violations['c_n_loss'],  # ()
+					'angles_ca_c_n_loss_mean': connection_violations['ca_c_n_loss'],  # ()
+					'angles_c_n_ca_loss_mean': connection_violations['c_n_ca_loss'],  # ()
 					'connections_per_residue_loss_sum': connection_violations['per_residue_loss_sum'],  # (N)
 					'connections_per_residue_violation_mask': connection_violations['per_residue_violation_mask'],  # (N)
 					'clashes_mean_loss': between_residue_clashes['mean_loss'],  # ()
@@ -577,7 +578,7 @@ class StructureModule(nn.Module):
 	def backbone_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]) -> None:
 		affine_trajectory = QuatAffine.from_tensor(value['traj'])
 		rigid_trajectory = affine_trajectory.to_rigids()
-
+				
 		gt_trajectory = QuatAffine.from_tensor(batch['backbone_affine_tensor'])
 		gt_rigid = gt_trajectory.to_rigids()
 		backbone_mask = batch['backbone_affine_mask']
@@ -585,22 +586,31 @@ class StructureModule(nn.Module):
 		fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
 						l1_clamp_distance=self.config.fape.clamp_distance,
 						length_scale=self.config.fape.loss_unit_distance)
-		#TODO
+		#TODO	
 		#fape_loss_fn = jax.vmap(fape_loss_fn, (0, None, None, 0, None, None))
-		fape_loss = fape_loss_fn(rigid_trajectory, gt_rigid, backbone_mask,
-								rigid_trajectory.trans, gt_rigid.trans, backbone_mask)
+		fape_loss = []
+		for i in range(value['traj'].size(0)):
+			pred = rigids_apply(lambda x: x[i,...], rigid_trajectory)
+			fape_loss.append(fape_loss_fn(pred, gt_rigid, backbone_mask, pred.trans, gt_rigid.trans, backbone_mask))
+		
+		fape_loss = torch.stack(fape_loss, dim=0)
+		
 
 		if 'use_clamped_fape' in batch:
 			use_clamped_fape = torch.Tensor(batch['use_clamped_fape'], dtype=torch.float32)
-			unclamped_fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
-						l1_clamp_distance=None,
-						length_scale=self.config.fape.loss_unit_distance)
+			unclamped_fape_loss_fn = functools.partial(	protein.frame_aligned_point_error, 
+														l1_clamp_distance=None,
+														length_scale=self.config.fape.loss_unit_distance)
 			#TODO
 			#unclamped_fape_loss_fn = jax.vmap(unclamped_fape_loss_fn, (0, None, None, 0, None, None))
-			fape_loss_unclamped = fape_loss_fn(	rigid_trajectory, gt_rigid, backbone_mask,
-												rigid_trajectory.trans, gt_rigid.trans, backbone_mask)
+			fape_loss_unclamped = []
+			for i in range(value['traj'].size(0)):
+				pred = rigids_apply(lambda x: x[i,...], rigid_trajectory)
+				fape_loss_unclamped = fape_loss_fn(	pred, gt_rigid, backbone_mask,
+													pred.trans, gt_rigid.trans, backbone_mask)
+			fape_loss_unclamped = torch.stack(fape_loss_unclamped, dim=0)
+			fape_loss = fape_loss*use_clamped_fape + fape_loss_unclamped*(1.0-use_clamped_fape)
 
-		fape_loss = fape_loss*use_clamped_fape + fape_loss_unclamped*(1.0-use_clamped_fape)
 		ret['fape'] = fape_loss[-1]
 		ret['loss'] += torch.mean(fape_loss)
 
@@ -616,7 +626,8 @@ class StructureModule(nn.Module):
 		pred_frames = value['sidechains']['frames']
 		pred_positions = value['sidechains']['atom_pos']
 		flat_pred_frames = rigids_apply(lambda x: x[-1].view(-1), pred_frames)
-		flat_pred_positions = rigids_apply(lambda x: x[-1].view(-1), pred_positions)
+		flat_pred_positions = vecs_apply(lambda x: x[-1].view(-1), pred_positions)
+		
 		fape = protein.frame_aligned_point_error(
 			pred_frames=flat_pred_frames, target_frames=flat_gt_frames, frames_mask=flat_frames_mask,
 			pred_positions=flat_pred_positions, target_positions=flat_gt_positions, positions_mask=flat_positions_mask,
@@ -627,17 +638,18 @@ class StructureModule(nn.Module):
 
 	def supervised_chi_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]):
 		eps = 1e-6
-		sequence_mask = batch['sequence_mask']
+		sequence_mask = batch['seq_mask']
 		num_res = sequence_mask.size(0)
 		chi_mask = batch['chi_mask'].to(dtype=torch.float32)
 		pred_angles = value['sidechains']['angles_sin_cos'].view(-1, num_res, 7, 2)
 		pred_angles = pred_angles[:, :, 3:, :]
 
-		residue_type_one_hot = F.one_hot(batch['aatype'], residue_constants.restype_num+1).to(dtype=torch.float32)[None]
+		residue_type_one_hot = F.one_hot(batch['aatype'], residue_constants.restype_num+1).to(dtype=torch.float32, device=chi_mask.device)[None]
 		chi_pi_periodic = torch.einsum('ijk, kl -> ijl', residue_type_one_hot, 
-										torch.Tensor(residue_constants.chi_pi_periodic))
-		true_chi = batch['chi_angles'][None]
-		sin_cos_true_chi = torch.stack([torch.sin(true_chi), torch.cos(true_chi)], dim=-1)
+										residue_type_one_hot.new_tensor(residue_constants.chi_pi_periodic))
+		# true_chi = batch['chi_angles'][None]
+		# sin_cos_true_chi = torch.stack([torch.sin(true_chi), torch.cos(true_chi)], dim=-1)
+		sin_cos_true_chi = batch['chi_angles_sin_cos']
 
 		shifted_mask = (1 - 2*chi_pi_periodic)[...,None]
 		sq_chi_error = torch.sum(torch.square(sin_cos_true_chi - pred_angles), dim=-1)

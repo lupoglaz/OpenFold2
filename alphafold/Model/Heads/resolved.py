@@ -15,7 +15,7 @@ class ExperimentallyResolvedHead(nn.Module):
 		self.global_config = global_config
 		self.logits = nn.Linear(num_feat_1d, 37)
 
-		self.loss_function = nn.CrossEntropyLoss(reduction='none')
+		self.loss_function = nn.BCELoss(reduction='none')
 
 	def load_weights_from_af2(self, data, rel_path: str='experimentally_resolved_head', ind:int=None):
 		modules=[self.logits]
