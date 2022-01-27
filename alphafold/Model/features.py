@@ -60,10 +60,11 @@ class AlphaFoldFeatures(nn.Module):
 		
 		raw_features = dict(raw_features)
 		num_res = int(raw_features['seq_length'][0])
-		# cfg, feature_names = self.make_data_config(num_res)
-		cfg = copy.deepcopy(self.config.data)
-		with cfg.unlocked():
-			cfg.eval.crop_size = num_res
+				
+		if num_res < self.config.data.eval.crop_size:
+			cfg = copy.deepcopy(self.config.data)
+			with cfg.unlocked():
+				cfg.eval.crop_size = num_res
 		mode_cfg = cfg['eval']
 		
 		if 'deletion_matrix_int' in raw_features:
@@ -97,7 +98,7 @@ class AlphaFoldFeatures(nn.Module):
 			tensor_dict = protein.make_atom14_positions(tensor_dict)
 			tensor_dict = protein.make_backbone_frames(tensor_dict)
 			tensor_dict = protein.make_chi_angles(tensor_dict)
-			print(tensor_dict.keys())
+			
 
 	
 		if cfg.common.use_templates:

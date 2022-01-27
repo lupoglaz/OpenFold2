@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from typing import Sequence, Tuple, Dict
+import sys
 
 class MaskedMSAHead(nn.Module):
 	"""
@@ -48,6 +49,10 @@ class MaskedMSAHead(nn.Module):
 		return dict(logits=logits)
 
 	def loss(self, value:Dict[str,torch.Tensor], batch:Dict[str,torch.Tensor])->Dict[str,torch.Tensor]:
-		errors = self.loss_function(value['logits'], batch['true_msa'])
-		loss = torch.sum(errors * batch['bert_mask'], dims=(-2,-1))/(1e-8 + torch.sum(batch['bert_mask'], dim=(-2,-1)))
+		logits = value['logits'].view(value['logits'].size(0)*value['logits'].size(1), -1)
+		true_msa = batch['true_msa'].view(batch['true_msa'].size(0)*batch['true_msa'].size(1))
+		errors = self.loss_function(logits, true_msa)
+		errors = errors.view(value['logits'].size(0), value['logits'].size(1))
+		loss = torch.sum(errors * batch['bert_mask'], dim=(-2,-1))/(1e-8 + torch.sum(batch['bert_mask'], dim=(-2,-1)))
+		
 		return {'loss':loss}

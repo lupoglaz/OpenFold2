@@ -205,7 +205,7 @@ class AlphaFoldIteration(nn.Module):
 	"""
 	HIGH = 1
 	LOW = 2
-	def __init__(self, config, global_config, num_res:int, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
 		super().__init__()
 		self.config = config
 		self.global_config = global_config
@@ -272,7 +272,6 @@ class AlphaFoldIteration(nn.Module):
 			else:
 				value = ret
 			loss_output = module.loss(value, batch)
-			print(ret.keys())
 			ret[name].update(loss_output)
 			loss = head_config.weight * ret[name]['loss']
 			return loss
@@ -295,12 +294,11 @@ class AlphaFoldIteration(nn.Module):
 			
 
 class AlphaFold(nn.Module):
-	def __init__(self, config, num_res:int, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
+	def __init__(self, config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
 		super().__init__()
 		self.config = config
 		self.global_config = config.global_config
-		self.impl = AlphaFoldIteration(	self.config, self.global_config, 
-										num_res=num_res, 
+		self.impl = AlphaFoldIteration(	self.config, self.global_config,
 										target_dim=target_dim, 
 										msa_dim=msa_dim, 
 										extra_msa_dim=extra_msa_dim,
@@ -370,14 +368,7 @@ class AlphaFold(nn.Module):
 			num_iter = 0
 			recycles, tol = 0, inf
 
-		ret = do_call(prev=prev, recycle_idx=num_iter)
-		
-		if compute_loss:
-			ret = ret[0], [ret[1]]
-		
-		if not return_representations:
-			del (ret[0] if compute_loss else ret)['representations']
-		
-		return ret, (recycles, tol)
+		ret, total_loss = do_call(prev=prev, recycle_idx=num_iter)
+		return ret, total_loss
 				
 

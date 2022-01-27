@@ -278,7 +278,7 @@ class FoldIteration(nn.Module):
 		affine = QuatAffine.from_tensor(activations['affine'].to(dtype=activations['act'].dtype))
 		act = activations['act']
 		attn = self.attention_module(inputs_1d=act, inputs_2d=static_feat_2d, mask=sequence_mask, affine=affine)
-		act += attn
+		act = act + attn
 		act = self.attention_layer_norm(act)
 
 		input_act = act
@@ -286,7 +286,7 @@ class FoldIteration(nn.Module):
 			act = self.transition[i](act)
 			if i < self.config.num_layer_in_transition - 1:
 				act = self.relu(act)
-		act += input_act
+		act = act + input_act
 		act = self.transition_layer_norm(act)
 
 		if update_affine:
@@ -586,28 +586,22 @@ class StructureModule(nn.Module):
 		fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
 						l1_clamp_distance=self.config.fape.clamp_distance,
 						length_scale=self.config.fape.loss_unit_distance)
-		#TODO	
-		#fape_loss_fn = jax.vmap(fape_loss_fn, (0, None, None, 0, None, None))
 		fape_loss = []
 		for i in range(value['traj'].size(0)):
 			pred = rigids_apply(lambda x: x[i,...], rigid_trajectory)
 			fape_loss.append(fape_loss_fn(pred, gt_rigid, backbone_mask, pred.trans, gt_rigid.trans, backbone_mask))
-		
 		fape_loss = torch.stack(fape_loss, dim=0)
 		
-
 		if 'use_clamped_fape' in batch:
 			use_clamped_fape = torch.Tensor(batch['use_clamped_fape'], dtype=torch.float32)
 			unclamped_fape_loss_fn = functools.partial(	protein.frame_aligned_point_error, 
 														l1_clamp_distance=None,
 														length_scale=self.config.fape.loss_unit_distance)
-			#TODO
-			#unclamped_fape_loss_fn = jax.vmap(unclamped_fape_loss_fn, (0, None, None, 0, None, None))
 			fape_loss_unclamped = []
 			for i in range(value['traj'].size(0)):
 				pred = rigids_apply(lambda x: x[i,...], rigid_trajectory)
-				fape_loss_unclamped = fape_loss_fn(	pred, gt_rigid, backbone_mask,
-													pred.trans, gt_rigid.trans, backbone_mask)
+				fape_loss_unclamped = unclamped_fape_loss_fn(	pred, gt_rigid, backbone_mask,
+																pred.trans, gt_rigid.trans, backbone_mask)
 			fape_loss_unclamped = torch.stack(fape_loss_unclamped, dim=0)
 			fape_loss = fape_loss*use_clamped_fape + fape_loss_unclamped*(1.0-use_clamped_fape)
 
@@ -662,7 +656,7 @@ class StructureModule(nn.Module):
 
 		unnormed_angles = value['sidechains']['unnormalized_angles_sin_cos'].view(-1, num_res, 7, 2)
 		angle_norm = torch.sqrt(torch.sum(torch.square(unnormed_angles), dim=-1) + eps)
-		norm_error = 1.0 -angle_norm
+		norm_error = torch.abs(1.0 - angle_norm)
 		angle_norm_loss = torch.sum(sequence_mask[None, :, None]*norm_error)/torch.sum(sequence_mask)
 		
 		ret['angle_norm_loss'] = angle_norm_loss

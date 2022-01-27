@@ -1,7 +1,9 @@
 # Diff
 *.pkl
 Log/*
-
+LogTrain/*
+*.txt
+*.pdb
 
 # Alignments
 *.sto

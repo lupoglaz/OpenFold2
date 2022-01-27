@@ -76,6 +76,7 @@ tiny_config = ml_collections.ConfigDict({
 				'true_msa': [NUM_MSA_SEQ, NUM_RES]
 			},
 			'fixed_size': True,
+			'crop_size': 256,
 			'subsample_templates': False,  # We want top templates.
 			'masked_msa_replace_fraction': 0.15,
 			'max_msa_clusters': 512,

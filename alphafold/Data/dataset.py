@@ -43,18 +43,12 @@ class GeneralFileData(Dataset):
 		new.data = {key: self.data[key] + other.data[key] for key in new.keys}
 		return new
 
-def get_fasta_stream(fasta_dir:Path, batch_size:int=1):
-	assert fasta_dir.exists()
-	data = GeneralFileData(fasta_dir, allowed_suffixes=['.fasta', '.fas'])
-	return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0)
-
-def get_pdb_stream(pdb_dir:Path, batch_size:int=1):
-	assert pdb_dir.exists()
-	data = GeneralFileData(pdb_dir, allowed_suffixes=['.pdb'])
-	return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0)
-
-def get_stream(data, batch_size:int=1):
-	return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0, collate_fn=path_collate)
+def get_stream(data, batch_size:int=1, process_fn:Callable=None):
+	if process_fn is None:
+		return DataLoader(data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0, collate_fn=path_collate)
+	else:
+		return DataLoader(	data, shuffle=False, pin_memory=False, batch_size=batch_size, num_workers=0, 
+							collate_fn=lambda *a, **kw: process_fn(path_collate(*a, **kw)))
 
 def get_data_stream(data_dir:Path, batch_size:int=1):
 	assert data_dir.exists()

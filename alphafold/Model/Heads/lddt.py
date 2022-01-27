@@ -5,6 +5,8 @@ from typing import Sequence, Tuple, Dict
 
 from alphafold.Common import residue_constants
 
+import sys
+
 def lddt(predicted_points:torch.Tensor,
 		true_points:torch.Tensor,
 		true_points_mask:bool,
@@ -15,9 +17,8 @@ def lddt(predicted_points:torch.Tensor,
 	"""
 	assert predicted_points.ndimension() == 3
 	assert predicted_points.size(-1) == 3
-	assert true_points_mask.ndimension() == 1
-	assert predicted_points.size(-1) == 1
-
+	assert true_points_mask.ndimension() == 3
+	assert true_points_mask.size(-1) == 1
 	dmat_true = torch.sqrt(1e-10 + torch.sum(
 		torch.square(true_points[:, :, None] - true_points[:, None, :]), dim=-1
 	))
@@ -26,7 +27,7 @@ def lddt(predicted_points:torch.Tensor,
 	))
 	dists_to_score = ( (dmat_true<cutoff).to(dtype=torch.float32) * 
 		true_points_mask * (true_points_mask.transpose(-1, -2)) *
-		(1.0 - torch.eye(dmat_true.size(1)))
+		(1.0 - torch.eye(dmat_true.size(1), device=dmat_true.device, dtype=dmat_true.dtype))
 		)
 	dist_l1 = torch.abs(dmat_true - dmat_predicted)
 	score = 0.25*( 	(dist_l1 < 0.5).to(dtype=torch.float32) + 
@@ -110,22 +111,22 @@ class PredictedLDDTHead(nn.Module):
 		true_all_atom_pos = batch['all_atom_positions']
 		all_atom_mask = batch['all_atom_mask']
 		num_bins = self.config.num_bins
-
+				
 		lddt_ca = lddt(
 			predicted_points=pred_all_atom_pos[None,:,1,:],
 			true_points=true_all_atom_pos[None,:,1,:],
 			true_points_mask=all_atom_mask[None, :, 1:2].to(dtype=torch.float32),
 			cutoff=15.0, per_residue=True)[0]
 		lddt_ca = lddt_ca.detach()
-
-		bin_index = torch.floor(lddt_ca*num_bins).to(dtype=torch.int32)
-		bin_index = torch.minimum(bin_index, num_bins - 1)
+				
+		bin_index = torch.floor(lddt_ca*num_bins).to(dtype=torch.long)
+		bin_index = torch.minimum(bin_index, bin_index.new_tensor([num_bins - 1]))
 		# lddt_ca_one_hot = F.one_hot(bin_index, num_classes=num_bins)
-
+				
 		logits = value['predicted_lddt']['logits']
 		errors = self.loss_function(logits, bin_index)
-
-		mask_ca = all_atom_mask[:, residue_constants.atom_order['CA']]
+		
+		mask_ca = all_atom_mask[:, bin_index.new_tensor(residue_constants.atom_order['CA'])]
 		mask_ca = mask_ca.to(dtype=torch.float32)
 		loss = torch.sum(errors*mask_ca)/(torch.sum(mask_ca) + 1e-8)
 		

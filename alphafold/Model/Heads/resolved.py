@@ -15,7 +15,7 @@ class ExperimentallyResolvedHead(nn.Module):
 		self.global_config = global_config
 		self.logits = nn.Linear(num_feat_1d, 37)
 
-		self.loss_function = nn.BCELoss(reduction='none')
+		self.loss_function = nn.BCEWithLogitsLoss(reduction='none')
 
 	def load_weights_from_af2(self, data, rel_path: str='experimentally_resolved_head', ind:int=None):
 		modules=[self.logits]
@@ -54,7 +54,6 @@ class ExperimentallyResolvedHead(nn.Module):
 
 		atom_exists = batch['atom37_atom_exists']
 		all_atom_mask = batch['all_atom_mask'].to(dtype=torch.float32)
-		
 		xent = self.loss_function(logits, all_atom_mask)
 		loss = torch.sum(xent*atom_exists) / (torch.sum(atom_exists) + 1e-8)
 		
