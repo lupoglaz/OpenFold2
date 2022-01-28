@@ -1,14 +1,13 @@
 import torch
 from torch import nn
-# from alphafold.Model.Opt import checkpointing
-from alphafold.Tests.Model.quaternion_test import convert, check_recursive
+from alphafold.Model.Opt import checkpointing as chkpt
+# from alphafold.Tests.Model.quaternion_test import convert, check_recursive
+from alphafold.Tests.utils import convert, check_recursive
 import argparse
 from pathlib import Path
 from typing import Dict
 
 from torch.utils.checkpoint import checkpoint
-import deepspeed as ds
-# from deepspeed.checkpointing import checkpoint
 
 class SimpleIteration(nn.Module):
 	def __init__(self, f_in, f_mid, f_out) -> None:
@@ -18,18 +17,18 @@ class SimpleIteration(nn.Module):
 			nn.ReLU(),
 			nn.Linear(f_mid, f_mid),
 			nn.ReLU(),
-			# nn.LayerNorm(f_mid),
+			nn.LayerNorm(f_mid),
 			nn.Linear(f_mid, f_out)
 		)
 	def forward(self, x):
 		return self.op(x)
 
 class SimpleStack(nn.Module):
-	def __init__(self, f_in, f_mid, f_out, num_iter:int=10, checkpoint:bool=False) -> None:
+	def __init__(self, f_in, f_mid, f_out, num_iter:int=1, checkpoint:bool=False) -> None:
 		super(SimpleStack, self).__init__()
 		self.checkpoint = checkpoint
 
-		# self.input_norm = nn.LayerNorm(f_in)
+		self.input_norm = nn.LayerNorm(f_in)
 		self.input_projection = nn.Linear(f_in, f_mid)
 		
 		self.output_projection = nn.Linear(f_mid, f_out)
@@ -37,13 +36,10 @@ class SimpleStack(nn.Module):
 		self.iterations = nn.ModuleList([SimpleIteration(f_mid, 4*f_mid, f_mid) for i in range(num_iter)])
 
 	def forward(self, x):
-		x = self.relu(self.input_projection(x))#self.input_norm(x)))
+		x = self.relu(self.input_projection(self.input_norm(x)))
 		if self.checkpoint:
 			for simple_iter in self.iterations:
-				if ds.checkpointing.is_configured():
-					x = ds.checkpointing.CheckpointFunction(lambda batch: simple_iter(batch), x)
-				else:
-					x = checkpoint(lambda batch: simple_iter(batch), x)
+				x = chkpt.checkpoint(lambda batch: simple_iter(batch), x)
 		else:
 			for simple_iter in self.iterations:
 				x = simple_iter(x)
@@ -51,7 +47,6 @@ class SimpleStack(nn.Module):
 		return x
 
 def CheckpointingTest(args, batch_size:int=64):
-	# ds.checkpointing.configure()
 	x = torch.randn(batch_size, 128, dtype=torch.float32, device='cuda')
 	model_chk = SimpleStack(128, 256, 128, checkpoint=True).to(dtype=torch.float32, device='cuda')
 	model = SimpleStack(128, 256, 128, checkpoint=False).to(dtype=torch.float32, device='cuda')
@@ -69,13 +64,13 @@ def CheckpointingTest(args, batch_size:int=64):
 	loss_chk = torch.square(y_chk).mean()
 	loss_chk.backward()
 	
-	for param, param_chk in zip(model.parameters(), model_chk.parameters()):
-		print(param.size(), '\t', param.grad is None, '\t', param_chk.grad is None)
+	# for param, param_chk in zip(model.parameters(), model_chk.parameters()):
+	# 	print(param.size(), '\t', param.grad is None, '\t', param_chk.grad is None)
 	
-	for param, param_chk in zip(model.parameters(), model_chk.parameters()):
-		# print(param_chk.grad, param.grad)
-		if not torch.allclose(param.grad, param_chk.grad):
-			print(param.grad.mean(), param_chk.grad.mean(), torch.max(torch.abs(param.grad - param_chk.grad)))
+	# for param, param_chk in zip(model.parameters(), model_chk.parameters()):
+	# 	print(param_chk.grad, param.grad)
+	# 	if not torch.allclose(param.grad, param_chk.grad):
+	# 		print(param.grad.mean(), param_chk.grad.mean(), torch.max(torch.abs(param.grad - param_chk.grad)))
 
 class DictIteration(nn.Module):
 	def __init__(self, f_in, f_mid, f_out) -> None:
@@ -92,7 +87,7 @@ class DictIteration(nn.Module):
 		return {'a': self.op(batch['a']), 'b': self.op(batch['b'])}
 
 class DictStack(nn.Module):
-	def __init__(self, f_in, f_mid, f_out, num_iter:int=10, checkpoint:bool=False) -> None:
+	def __init__(self, f_in, f_mid, f_out, num_iter:int=1, checkpoint:bool=False) -> None:
 		super(DictStack, self).__init__()
 		self.checkpoint = checkpoint
 
@@ -109,40 +104,60 @@ class DictStack(nn.Module):
 		x = {'a': a, 'b': b}
 		if self.checkpoint:
 			for simple_iter in self.iterations:
-				x = checkpoint(lambda batch: simple_iter(batch), x)
+				x = chkpt.checkpoint(lambda batch: simple_iter(batch), x)
 		else:
 			for simple_iter in self.iterations:
 				x = simple_iter(x)
 		x = {'a':self.output_projection(x['a']), 'b':self.output_projection(x['b'])}
 		return x
 
-
-
 def DictCheckpointingTest(args, batch_size:int=64):
-	x = {	'a':torch.randn(batch_size, 128, dtype=torch.float32, device='cuda'),
-			'b':torch.randn(batch_size, 128, dtype=torch.float32, device='cuda')
+	x = {	'a':torch.randn(batch_size, 128, dtype=torch.float32, device='cuda', requires_grad=True),
+			'b':torch.randn(batch_size, 128, dtype=torch.float32, device='cuda', requires_grad=True)
 		}
-	# model_chk = DictStack(128, 256, 128, checkpoint=True).to(dtype=torch.float32, device='cuda')
-	model = DictStack(128, 256, 128, checkpoint=False).to(dtype=torch.float32, device='cuda')
+	model_chk = DictStack(128, 256, 128, checkpoint=True).to(dtype=torch.float32, device='cuda')
+	# model = DictStack(128, 256, 128, checkpoint=False).to(dtype=torch.float32, device='cuda')
 	# for param_tensor in model.state_dict():
 	# 	model_chk.state_dict()[param_tensor].data.copy_(model.state_dict()[param_tensor].data)
 
-	model.train()
-	# model_chk.train()
+	# model.train()
+	model_chk.train()
 	
-	y = model(x)
-	loss = torch.square(y['a']).mean() + torch.square(y['b']).mean()
-	loss.backward()
+	# y = model(x)
+	# loss = torch.square(y['a']).mean() + torch.square(y['b']).mean()
+	# loss.backward()
 	
-	for param in model.parameters():
-		print(param.grad.sum())
-
-	# y_chk = model_chk(x)
-	# loss_chk = torch.square(y_chk).mean()
-	# loss_chk.backward()
+	# for param in model.parameters():
+	# 	print(param.grad.sum())
+	
+	y_chk = model_chk(x)
+	loss_chk = torch.square(y_chk['a'] + y_chk['b']).mean()
+	loss_chk.backward()
 
 	# for param, param_chk in zip(model.parameters(), model_chk.parameters()):
 		# assert torch.allclose(param.grad, param_chk.grad)
+
+
+def checkpointing_tests(args):
+	inputs = {	'a': torch.zeros(10, 10, requires_grad=True, device='cuda'),
+				'b': torch.zeros(10, 10, requires_grad=False, device='cuda'),
+				'c': [torch.zeros(10, 10, requires_grad=False), 'str', torch.zeros(10, 10, requires_grad=True, device='cuda')],
+				'd': (torch.zeros(10, 10, requires_grad=True), 100)
+				}
+	new_inputs = chkpt.detach_variable(inputs)
+	def no_grad(x):
+		if isinstance(x, torch.Tensor):
+			x.requires_grad = False
+		return x
+	
+	chkpt.recursive_apply(no_grad, new_inputs)
+	assert chkpt.check_backward_validity(inputs) == True
+	assert chkpt.check_backward_validity(new_inputs) == False
+
+	# for inp in chkpt.tree_walk(inputs):
+	# 	print(inp)
+	print(chkpt.get_device_states(inputs))
+	
 
 
 if __name__=='__main__':
@@ -151,5 +166,7 @@ if __name__=='__main__':
 		
 	args = parser.parse_args()
 
-	CheckpointingTest(args)
-	# DictCheckpointingTest(args)
+	# CheckpointingTest(args)
+	DictCheckpointingTest(args)
+
+	# checkpointing_tests(args)

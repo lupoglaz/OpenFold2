@@ -86,7 +86,7 @@ tiny_config = ml_collections.ConfigDict({
 	},
 	'model': {
 		'embeddings_and_evoformer': {
-			'evoformer_num_block': 1,
+			'evoformer_num_block': 2,
 			'evoformer': {
 				'msa_row_attention_with_pair_bias': {
 					'dropout_rate': 0.15,
@@ -237,10 +237,6 @@ tiny_config = ml_collections.ConfigDict({
 				'weight': 0.3
 			},
 			'predicted_aligned_error': {
-				# `num_bins - 1` bins uniformly space the
-				# [0, max_error_bin A] range.
-				# The final bin covers [max_error_bin A, +infty]
-				# 31A gives bins with 0.5A width.
 				'max_error_bin': 31.,
 				'num_bins': 64,
 				'num_channels': 128,
