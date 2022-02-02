@@ -10,6 +10,7 @@ from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
 from typing import Mapping, OrderedDict
 import functools
+from torch.utils.checkpoint import checkpoint
 
 def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,  
 					global_config, 
@@ -28,7 +29,7 @@ def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,
 			if not(broadcast_dim is None):
 				shape[broadcast_dim] = 1
 			keep_rate = 1.0 - rate
-			p = torch.zeros(*tuple(shape), dtype=tensor.dtype, device=tensor.device).fill_(keep_rate)
+			p = tensor.new_zeros().fill_(keep_rate)
 			keep = torch.bernoulli(p)
 			return keep * tensor / keep_rate
 		else:
@@ -89,13 +90,9 @@ class EvoformerIteration(nn.Module):
 		self.triangle_attention_ending_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_ending_node', ind=ind)
 		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition', ind=ind)
 
-	def forward(self, 	activations:Mapping[str, torch.Tensor], 
-						masks:Mapping[str, torch.Tensor], 
-						is_training: bool=False) -> Mapping[str, torch.Tensor]:
-		msa_act, pair_act = activations['msa'], activations['pair']
-		msa_mask, pair_mask = masks['msa'], masks['pair']
+	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
+					is_training: bool=False) -> Mapping[str, torch.Tensor]:
 		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
-		
 		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
 		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
 		msa_act = DO(self.msa_transition, msa_act, msa_mask)
@@ -106,14 +103,14 @@ class EvoformerIteration(nn.Module):
 		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask)
 		pair_act = DO(self.pair_transition, pair_act, pair_mask)
 
-		return {'msa': msa_act, 'pair': pair_act}
+		return msa_act, pair_act
 		
 class EmbeddingsAndEvoformer(nn.Module):
 	"""
-	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1561
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1681
 	"""
 	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int,
-				clear_cache:bool=True) -> None:
+				clear_cache:bool=False) -> None:
 		super(EmbeddingsAndEvoformer, self).__init__()
 		self.config = config
 		self.global_config = global_config
@@ -173,23 +170,29 @@ class EmbeddingsAndEvoformer(nn.Module):
 		mask_2d = batch['seq_mask'][:, None] * batch['seq_mask'][None, :]
 
 		extra_msa_act = self.extra_msa_emb(batch)
-		extra_act = {'msa': extra_msa_act, 'pair': inp_pair_act}
-		extra_masks = {'msa':batch['extra_msa_mask'], 'pair': mask_2d}
-		for extra_msa_iteration in self.extra_msa_stack:
-			extra_act = extra_msa_iteration(activations=extra_act, masks=extra_masks, is_training=is_training)
+		extra_pair_act = inp_pair_act
+		for i, extra_msa_iteration in enumerate(self.extra_msa_stack):
+			extra_msa_act, extra_pair_act = self.extra_msa_stack[i](extra_msa_act, extra_pair_act, batch['extra_msa_mask'], mask_2d, is_training=is_training)
 			# https://github.com/aqlaboratory/openfold/blob/e1c7c9e7cf353b068c3df7b8a23803f45dfea75d/openfold/model/evoformer.py#L380
+			# Seems like it is not necessary
 			if self.clear_cache:
 				torch.cuda.empty_cache()
 
-		evoformer_act = {'msa': inp_msa_act, 'pair': extra_act['pair']}
-		evoformer_masks = {'msa': batch['msa_mask'], 'pair': mask_2d}
-		for evoformer_iteration in self.evoformer_stack:
-			evoformer_act = evoformer_iteration(activations=evoformer_act, masks=evoformer_masks, is_training=is_training)
+		msa_act, pair_act = inp_msa_act, extra_pair_act
+		msa_mask, pair_mask = batch['msa_mask'], mask_2d
+		
+		def call_iteration(msa_act, pair_act, msa_mask, pair_mask, index=None):
+			return self.evoformer_stack[index](msa_act, pair_act, msa_mask, pair_mask, True)
+
+		for i, evoformer_iteration in enumerate(self.evoformer_stack):
+			if is_training:
+				msa_act, pair_act = checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
+			else:
+				msa_act, pair_act = evoformer_iteration(msa_act, pair_act, msa_mask, pair_mask, is_training=is_training)
+			# Seems like it is not necessary
 			if self.clear_cache:
 				torch.cuda.empty_cache()
 
-		msa_act = evoformer_act['msa']
-		pair_act = evoformer_act['pair']
 		single_act = self.single_activations(msa_act[0])
 		output = {
 			'single': single_act,
@@ -214,7 +217,8 @@ class AlphaFoldIteration(nn.Module):
 		self.evoformer_module = EmbeddingsAndEvoformer(	config.embeddings_and_evoformer, global_config, 
 														target_dim=target_dim,
 														msa_dim=msa_dim,
-														extra_msa_dim=extra_msa_dim)
+														extra_msa_dim=extra_msa_dim,
+														clear_cache=False)
 		evo_conf = config.embeddings_and_evoformer
 		head_dict = {
 			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),

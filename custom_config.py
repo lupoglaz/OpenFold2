@@ -86,7 +86,7 @@ tiny_config = ml_collections.ConfigDict({
 	},
 	'model': {
 		'embeddings_and_evoformer': {
-			'evoformer_num_block': 2,
+			'evoformer_num_block': 4,
 			'evoformer': {
 				'msa_row_attention_with_pair_bias': {
 					'dropout_rate': 0.15,
@@ -111,7 +111,7 @@ tiny_config = ml_collections.ConfigDict({
 				'outer_product_mean': {
 					'chunk_size': 128,
 					'dropout_rate': 0.0,
-					'num_outer_channel': 32,
+					'num_outer_channel': 16,
 					'orientation': 'per_row',
 					'shared_dropout': True
 				},
@@ -132,14 +132,14 @@ tiny_config = ml_collections.ConfigDict({
 				'triangle_multiplication_outgoing': {
 					'dropout_rate': 0.25,
 					'equation': 'ikc,jkc->ijc',
-					'num_intermediate_channel': 64,
+					'num_intermediate_channel': 32,
 					'orientation': 'per_row',
 					'shared_dropout': True
 				},
 				'triangle_multiplication_incoming': {
 					'dropout_rate': 0.25,
 					'equation': 'kjc,kic->ijc',
-					'num_intermediate_channel': 64,
+					'num_intermediate_channel': 32,
 					'orientation': 'per_row',
 					'shared_dropout': True
 				},
@@ -150,11 +150,11 @@ tiny_config = ml_collections.ConfigDict({
 					'shared_dropout': True
 				}
 			},
-			'extra_msa_channel': 64,
-			'extra_msa_stack_num_block': 4,
+			'extra_msa_channel': 32,
+			'extra_msa_stack_num_block': 2,
 			'max_relative_feature': 32,
-			'msa_channel': 256,
-			'pair_channel': 128,
+			'msa_channel': 64,
+			'pair_channel': 64,
 			'prev_pos': {
 				'min_bin': 3.25,
 				'max_bin': 20.75,

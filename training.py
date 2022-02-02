@@ -34,6 +34,7 @@ class ExponentialMovingAverage:
 			for param_name, stored in self.params.items():
 				diff = stored - update_params[param_name]
 				stored -= diff*(1.0 - self.decay)
+				
 
 	def load_state_dict(self, state_dict):
 		self.params = state_dict["params"]
@@ -92,6 +93,16 @@ class AlphaFoldModule(pl.LightningModule):
 	def on_before_zero_grad(self, optimizer: torch.optim.Optimizer) -> None:
 		self.ema.update(self.af2)
 		return super().on_before_zero_grad(optimizer)
+	
+	def on_after_backward(self) -> None:
+		# for k, param in zip(self.af2.state_dict().keys(), self.af2.parameters()):
+		# 	if param.grad is None:
+		# 		print(k, self.af2.state_dict()[k].size(), param.requires_grad)
+		# 	# assert not(param.grad is None)
+		# # for param in self.af2.parameters():
+		# # 	print(param.size(), param.grad is None)
+		# sys.exit()
+		return super().on_after_backward()
 
 	def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
 		checkpoint["ema"] = self.ema.state_dict()
@@ -135,18 +146,18 @@ if __name__=='__main__':
 	logger = TensorBoardLogger("LogTrain", name="tiny_config")
 	data = DataModule(args.dataset_dir)
 	model = AlphaFoldModule(tiny_config)
-	trainer = pl.Trainer(gpus=1, logger=logger, max_epochs=10000)
+	trainer = pl.Trainer(gpus=1, logger=logger, max_epochs=10000)#, precision=16, amp_backend="native")
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
 
-	ckpt = torch.load(Path("LogTrain/tiny_config/version_0/checkpoints/final.ckpt"))
-	model.load_state_dict(ckpt["state_dict"])
-	model.to(device='cuda:0')
-	model.eval()
-	data_stream = data.test_dataloader()
-	for feature_dict in data_stream:
-		with torch.no_grad():
-			prediction_result, _ = model(feature_dict, Path('test.pdb'))
+	# ckpt = torch.load(Path("LogTrain/tiny_config/version_0/checkpoints/final.ckpt"))
+	# model.load_state_dict(ckpt["state_dict"])
+	# model.to(device='cuda:0')
+	# model.eval()
+	# data_stream = data.test_dataloader()
+	# for feature_dict in data_stream:
+	# 	with torch.no_grad():
+	# 		prediction_result, _ = model(feature_dict, Path('test.pdb'))
 
 
 
