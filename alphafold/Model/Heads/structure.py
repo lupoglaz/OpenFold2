@@ -578,9 +578,10 @@ class StructureModule(nn.Module):
 	def backbone_loss(self, ret:Dict[str, torch.Tensor], value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]) -> None:
 		affine_trajectory = QuatAffine.from_tensor(value['traj'])
 		rigid_trajectory = affine_trajectory.to_rigids()
-				
-		gt_trajectory = QuatAffine.from_tensor(batch['backbone_affine_tensor'])
-		gt_rigid = gt_trajectory.to_rigids()
+		
+		# gt_trajectory = QuatAffine.from_tensor(batch['backbone_affine_tensor'])
+		# gt_rigid = gt_trajectory.to_rigids()
+		gt_rigid = rigids_from_tensor_flat12(batch['backbone_affine_tensor'])
 		backbone_mask = batch['backbone_affine_mask']
 		
 		fape_loss_fn = functools.partial(protein.frame_aligned_point_error, 
@@ -591,6 +592,9 @@ class StructureModule(nn.Module):
 			pred = rigids_apply(lambda x: x[i,...], rigid_trajectory)
 			fape_loss.append(fape_loss_fn(pred, gt_rigid, backbone_mask, pred.trans, gt_rigid.trans, backbone_mask))
 		fape_loss = torch.stack(fape_loss, dim=0)
+
+		# print(gt_rigid.trans)
+		# print(gt_rigid.trans)
 		
 		if 'use_clamped_fape' in batch:
 			use_clamped_fape = torch.Tensor(batch['use_clamped_fape'], dtype=torch.float32)

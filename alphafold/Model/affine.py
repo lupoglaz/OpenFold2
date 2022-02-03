@@ -119,7 +119,7 @@ def rigids_mul_rigids(a:Rigids, b:Rigids) -> Rigids:
 def rigids_invert(r:Rigids) -> Rigids:
 	inv_rots = rots_invert(r.rot)
 	t = rots_mul_vecs(inv_rots, r.trans)
-	inv_trans = Vecs(t.x, t.y, t.z)
+	inv_trans = Vecs(-t.x, -t.y, -t.z)
 	return Rigids(inv_rots, inv_trans)
 
 def quat_to_rot(quaternion):

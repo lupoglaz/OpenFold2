@@ -299,14 +299,17 @@ def frame_aligned_point_error(
 	assert target_positions.x.ndimension() == 1
 	assert positions_mask.ndimension() == 1
 
+	# print('Pred pos', pred_positions.x)
+	# print('Target pos', target_positions.x)
+
 	local_pred_pos = affine.rigids_mul_vecs(
 							affine.rigids_apply(lambda r: r[:, None], affine.rigids_invert(pred_frames)),
 							affine.vecs_apply(lambda x: x[None, :], pred_positions))
-
+	
 	local_target_pos = affine.rigids_mul_vecs(
 							affine.rigids_apply(lambda r: r[:, None], affine.rigids_invert(target_frames)),
 							affine.vecs_apply(lambda x: x[None, :], target_positions))
-
+	
 	error_dist = torch.sqrt(affine.vecs_squared_dist(local_pred_pos, local_target_pos) + epsilon)
 	if l1_clamp_distance:
 		error_dist = torch.clamp(error_dist, min=0.0, max=l1_clamp_distance)
@@ -363,7 +366,6 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 	rots[0,0,0] = -1
 	rots[0,2,2] = -1
 	gt_frames = affine.rigids_mul_rots(gt_frames, affine.rots_from_tensor3x3(rots))
-
 	restype_rigidgroup_is_ambiguous = all_atom_mask.new_zeros(21, 8)
 	restype_rigidgroup_rots = torch.tile(torch.eye(3, dtype=all_atom_mask.dtype, device=all_atom_mask.device), 
 										(*((1,)*batch_dims),21, 8, 1, 1))
@@ -388,7 +390,6 @@ def atom37_to_frames(aatype:torch.Tensor, all_atom_positions:torch.Tensor, all_a
 	gt_exists = gt_exists.resize( *(aatype_in_shape + (8,)) )
 	group_exists = group_exists.resize( *(aatype_in_shape + (8,)) )
 	residx_rigidgroup_is_ambiguous = residx_rigidgroup_is_ambiguous.resize( *(aatype_in_shape + (8,)))
-
 	return {
 		'rigidgroups_gt_frames': gt_frames_flat12, 
 		'rigidgroups_gt_exists': gt_exists,
@@ -540,8 +541,9 @@ def make_atom14_positions(protein):
 
 def make_backbone_frames(protein):
 	assert "rigidgroups_gt_frames" in protein.keys()
-	protein["backbone_affine_tensor"] = protein["rigidgroups_gt_frames"][...,0,:,:]
+	protein["backbone_affine_tensor"] = protein["rigidgroups_gt_frames"][...,0,:]
 	protein["backbone_affine_mask"] = protein["rigidgroups_gt_exists"][...,0]
+	# print(affine.rigids_from_tensor_flat12(protein["backbone_affine_tensor"]).trans)
 	return protein
 
 def make_chi_angles(protein):

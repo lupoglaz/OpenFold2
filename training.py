@@ -71,7 +71,7 @@ class AlphaFoldModule(pl.LightningModule):
 	def forward(self, feature_dict, pdb_path:Path=None):
 		batch = self.af2features(feature_dict, random_seed=42)
 		ret, total_loss = self.af2(batch, is_training=False, return_representations=False)
-
+		
 		if not(pdb_path is None):
 			protein_pdb = protein.from_prediction(features=batch, result=ret)
 			with open(pdb_path, 'w') as f:
@@ -143,21 +143,25 @@ if __name__=='__main__':
 	args.data_dir = Path(args.data_dir)
 	args.dataset_dir = Path(args.dataset_dir)
 
-	logger = TensorBoardLogger("LogTrain", name="tiny_config")
+	logger = TensorBoardLogger("LogTrain", name="tiny_config_all")
 	data = DataModule(args.dataset_dir)
 	model = AlphaFoldModule(tiny_config)
 	trainer = pl.Trainer(gpus=1, logger=logger, max_epochs=10000)#, precision=16, amp_backend="native")
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
 
-	# ckpt = torch.load(Path("LogTrain/tiny_config/version_0/checkpoints/final.ckpt"))
+	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_0/checkpoints/final.ckpt"))
+	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_1/checkpoints/epoch=394-step=394.ckpt"))
+	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_2/checkpoints/final.ckpt"))
+	
 	# model.load_state_dict(ckpt["state_dict"])
 	# model.to(device='cuda:0')
 	# model.eval()
 	# data_stream = data.test_dataloader()
 	# for feature_dict in data_stream:
 	# 	with torch.no_grad():
-	# 		prediction_result, _ = model(feature_dict, Path('test.pdb'))
+	# 		prediction_result, loss = model(feature_dict, Path('test.pdb'))
+	# 		print(loss)
 
 
 
