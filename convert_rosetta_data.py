@@ -60,7 +60,7 @@ if __name__=='__main__':
 	parser.add_argument('-obsolete_pdbs_path', default='pdb_mmcif/obsolete.dat', type=str)
 	
 	parser.add_argument('-max_template_date', default='2020-05-14', type=str)
-	parser.add_argument('-preset', default='reduced_dbs', type=str)
+	parser.add_argument('-preset', default='full_dbs', type=str)
 	
 	args = parser.parse_args()
 	args.rosetta_data_dir = Path(args.rosetta_data_dir)
@@ -80,15 +80,23 @@ if __name__=='__main__':
 	args.pdb70_database_path = Path(args.data_dir)/Path(args.pdb70_database_path)
 	args.template_mmcif_dir = Path(args.data_dir)/Path(args.template_mmcif_dir)
 
-	args.jackhmmer_binary_path = Path(subprocess.run(["which", "jackhmmer"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
-	args.hhblits_binary_path = Path(subprocess.run(["which", "hhblits"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
-	args.hhsearch_binary_path = Path(subprocess.run(["which", "hhsearch"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
-	args.kalign_binary_path = Path(subprocess.run(["which", "kalign"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
+	jackhmmer_binary_path = Path(subprocess.run(["which", "jackhmmer"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
+	if not(jackhmmer_binary_path.exists()):
+		jackhmmer_binary_path = Path(args.jackhammer_binary_path)
+	hhblits_binary_path = Path(subprocess.run(["which", "hhblits"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
+	if not(hhblits_binary_path.exists()):
+		hhblits_binary_path = Path(args.hhblits_binary_path)
+	hhsearch_binary_path = Path(subprocess.run(["which", "hhsearch"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
+	if not(hhsearch_binary_path.exists()):
+		hhsearch_binary_path = Path(args.hhsearch_binary_path)
+	kalign_binary_path = Path(subprocess.run(["which", "kalign"], stdout=subprocess.PIPE).stdout[:-1].decode('utf-8'))
+	if not(kalign_binary_path.exists()):
+		kalign_binary_path = Path(args.kalign_binary_path)
 	
 	data_pipeline = DataPipeline(
-		jackhammer_binary_path=args.jackhmmer_binary_path,
-		hhblits_binary_path=args.hhblits_binary_path,
-		hhsearch_binary_path=args.hhsearch_binary_path,
+		jackhammer_binary_path=jackhmmer_binary_path,
+		hhblits_binary_path=hhblits_binary_path,
+		hhsearch_binary_path=hhsearch_binary_path,
 		uniref90_database_path=args.uniref90_database_path,
 		mgnify_database_path=args.mgnify_database_path,
 		bfd_database_path=args.bfd_database_path,
@@ -96,11 +104,12 @@ if __name__=='__main__':
 		small_bfd_database_path=args.small_bfd_database_path,
 		pdb70_database_path=args.pdb70_database_path,
 		template_featurizer=None,
-		use_small_bfd=True)
+		use_small_bfd=False)
 
 	args.output_msa_dir.mkdir(parents=True, exist_ok=True)
 	args.output_feat_dir.mkdir(parents=True, exist_ok=True)
 	args.fasta_dir.mkdir(parents=True, exist_ok=True)
+	args.pdb_dir.mkdir(parents=True, exist_ok=True)
 
 	rosetta_pdb_dir = args.rosetta_data_dir/Path('pdb')
 	rosetta_a3m_dir = args.rosetta_data_dir/Path('a3m')
