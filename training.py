@@ -13,6 +13,7 @@ from custom_config import tiny_config
 import sys
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.optim.lr_scheduler import SequentialLR, LinearLR, MultiplicativeLR
 from typing import Any, Dict
 
 class ExponentialMovingAverage:
@@ -89,20 +90,23 @@ class AlphaFoldModule(pl.LightningModule):
 
 	def configure_optimizers(self):
 		optimizer = torch.optim.Adam(self.af2.parameters(), lr=1e-3, eps=1e-8)
-		return optimizer
+		lin_scheduler = LinearLR(optimizer, start_factor=0.0, end_factor=1.0, total_iters=1000)
+		con_scheduler = ConstantLR(optimizer, factor=1.0, total_iters=(50000-1000))
+		mul_scheduler = ConstantLR(optimizer, factor=0.95, total_iters=25000)
+		scheduler = SequentialLR(optimizer, [lin_scheduler, con_scheduler, mul_scheduler], milestones=[1000, 50000])
+		return 	{"optimizer":optimizer, "lr_scheduler":{
+											"scheduler": scheduler, "interval": "step"
+										}
+				}
+	
+	def lr_scheduler_step(self, scheduler, optimizer_idx, metric):
+    	scheduler.step(epoch=self.current_epoch)
 
 	def on_before_zero_grad(self, optimizer: torch.optim.Optimizer) -> None:
 		self.ema.update(self.af2)
 		return super().on_before_zero_grad(optimizer)
 	
 	def on_after_backward(self) -> None:
-		# for k, param in zip(self.af2.state_dict().keys(), self.af2.parameters()):
-		# 	if param.grad is None:
-		# 		print(k, self.af2.state_dict()[k].size(), param.requires_grad)
-		# 	# assert not(param.grad is None)
-		# # for param in self.af2.parameters():
-		# # 	print(param.size(), param.grad is None)
-		# sys.exit()
 		return super().on_after_backward()
 
 	def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
@@ -133,26 +137,34 @@ class DataModule(pl.LightningDataModule):
 		return get_stream(self.data_train, batch_size=1, process_fn=load_pkl)
 
 if __name__=='__main__':
-	parser = argparse.ArgumentParser(description='Train deep protein docking')	
+	parser = argparse.ArgumentParser(description='Train deep protein docking')
 	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
 	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
 	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
-	parser.add_argument('-model_name', default='model_1', type=str)
+	parser.add_argument('-log_dir', default='LogTrain', type=str)
+	parser.add_argument('-model_name', default='model_tiny', type=str)
+	parser.add_argument('-num_gpus', default=1, type=int)
+	parser.add_argument('-num_accum', default=1, type=int)
+	parser.add_argument('-max_iter', default=75000, type=int)
 
 	args = parser.parse_args()
 	args.data_dir = Path(args.data_dir)
 	args.dataset_dir = Path(args.dataset_dir)
-
-	logger = TensorBoardLogger("LogTrain", name="tiny_config_wosv")
+	
+	logger = TensorBoardLogger(args.log_dir, name=args.model_name)
 	data = DataModule(args.dataset_dir)
 	model = AlphaFoldModule(tiny_config)
-	trainer = pl.Trainer(gpus=1, logger=logger, max_epochs=10000)#, precision=16, amp_backend="native")
+	trainer = pl.Trainer(	gpus=args.num_gpus, logger=logger,
+							max_epochs=10000, 
+							accumulate_grad_batches=args.num_accum,
+							gradient_clip_val=0.1,
+							gradient_clip_algorithm = 'norm'
+ 						)
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
 
 	# ckpt = torch.load(Path("LogTrain/tiny_config_wosv/version_0/checkpoints/final.ckpt"))
-	
 	# model.load_state_dict(ckpt["state_dict"])
 	# model.to(device='cuda:0')
 	# model.eval()

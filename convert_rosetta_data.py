@@ -124,20 +124,23 @@ if __name__=='__main__':
 	
 	for [pdb_path], [a3m_path], [msa_path] in all_data:
 		pdb_path, a3m_path = Path(pdb_path), Path(a3m_path)
-		shutil.copy(pdb_path, args.pdb_dir / Path(pdb_path.stem + pdb_path.suffix))
-		pdb_features, pdb_sequence = data_pipeline.process_pdb(pdb_path)
-		
-		msa_data = np.load(msa_path)['msa']
-		msa, deletion_matrix = process_msa(msa_data, msa_alphabet)
-		
-		assert all([pdb_res == msa_res for pdb_res, msa_res in zip(pdb_sequence, msa[0])])
-		
-		num_res = len(pdb_sequence)
-		seq_description = pdb_path.stem.upper()
-		sequence_features = data_pipeline.make_sequence_features(sequence=pdb_sequence, description=seq_description, num_res=num_res)
-		msa_features = data_pipeline.make_msa_features(msas=(msa,),	deletion_matrices=(deletion_matrix, ))
-		
-		feature_dict = {**sequence_features, **msa_features, **pdb_features}
-		with open(args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl'), 'wb') as f:
-			pickle.dump(feature_dict, f, protocol=4)
+		try:
+			shutil.copy(pdb_path, args.pdb_dir / Path(pdb_path.stem + pdb_path.suffix))
+			pdb_features, pdb_sequence = data_pipeline.process_pdb(pdb_path)
+			
+			msa_data = np.load(msa_path)['msa']
+			msa, deletion_matrix = process_msa(msa_data, msa_alphabet)
+			
+			assert all([pdb_res == msa_res for pdb_res, msa_res in zip(pdb_sequence, msa[0])])
+			
+			num_res = len(pdb_sequence)
+			seq_description = pdb_path.stem.upper()
+			sequence_features = data_pipeline.make_sequence_features(sequence=pdb_sequence, description=seq_description, num_res=num_res)
+			msa_features = data_pipeline.make_msa_features(msas=(msa,),	deletion_matrices=(deletion_matrix, ))
+			
+			feature_dict = {**sequence_features, **msa_features, **pdb_features}
+			with open(args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl'), 'wb') as f:
+				pickle.dump(feature_dict, f, protocol=4)
+		except:
+			continue
 		
