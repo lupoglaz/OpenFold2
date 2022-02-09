@@ -48,6 +48,7 @@ class AlphaFoldModule(pl.LightningModule):
 	def __init__(self, config):
 		super().__init__()
 		self.af2features = AlphaFoldFeatures(config=config, device='cuda:0', is_training=True)
+		# self.af2features = AlphaFoldFeatures(config=config, device='cpu', is_training=True)
 		self.af2 = AlphaFold(config=config.model, target_dim=22, msa_dim=49, extra_msa_dim=25, compute_loss=True)
 		self.iter = 0
 		self.ema = ExponentialMovingAverage(self.af2, 0.999)
@@ -143,16 +144,14 @@ if __name__=='__main__':
 	args.data_dir = Path(args.data_dir)
 	args.dataset_dir = Path(args.dataset_dir)
 
-	logger = TensorBoardLogger("LogTrain", name="tiny_config_all")
+	logger = TensorBoardLogger("LogTrain", name="tiny_config_wosv")
 	data = DataModule(args.dataset_dir)
 	model = AlphaFoldModule(tiny_config)
 	trainer = pl.Trainer(gpus=1, logger=logger, max_epochs=10000)#, precision=16, amp_backend="native")
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
 
-	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_0/checkpoints/final.ckpt"))
-	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_1/checkpoints/epoch=394-step=394.ckpt"))
-	# ckpt = torch.load(Path("LogTrain/tiny_config_debugged/version_2/checkpoints/final.ckpt"))
+	# ckpt = torch.load(Path("LogTrain/tiny_config_wosv/version_0/checkpoints/final.ckpt"))
 	
 	# model.load_state_dict(ckpt["state_dict"])
 	# model.to(device='cuda:0')

@@ -278,7 +278,7 @@ tiny_config = ml_collections.ConfigDict({
 					'weight_frac': 0.5,
 					'length_scale': 10.,
 				},
-				'structural_violation_loss_weight': 1.0,
+				'structural_violation_loss_weight': 0.0,
 				'violation_tolerance_factor': 12.0,
 				'weight': 1.0
 			},

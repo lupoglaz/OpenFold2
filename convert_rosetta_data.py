@@ -115,7 +115,6 @@ if __name__=='__main__':
 	
 	for [pdb_path], [a3m_path], [msa_path] in all_data:
 		pdb_path, a3m_path = Path(pdb_path), Path(a3m_path)
-		print(pdb_path.stem)
 		shutil.copy(pdb_path, args.pdb_dir / Path(pdb_path.stem + pdb_path.suffix))
 		pdb_features, pdb_sequence = data_pipeline.process_pdb(pdb_path)
 		
@@ -132,6 +131,4 @@ if __name__=='__main__':
 		feature_dict = {**sequence_features, **msa_features, **pdb_features}
 		with open(args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl'), 'wb') as f:
 			pickle.dump(feature_dict, f, protocol=4)
-
-		break
 		
