@@ -92,11 +92,11 @@ class AlphaFoldModule(pl.LightningModule):
 	def configure_optimizers(self):
 		optimizer = torch.optim.Adam(self.af2.parameters(), lr=1e-3, eps=1e-8)
 		lin_scheduler = LinearLR(optimizer, start_factor=0.0, end_factor=1.0, total_iters=1000)
-		con_scheduler = ConstantLR(optimizer, factor=1.0, total_iters=(50000-1000))
-		mul_scheduler = ConstantLR(optimizer, factor=0.95, total_iters=25000)
-		scheduler = SequentialLR(optimizer, [lin_scheduler, con_scheduler, mul_scheduler], milestones=[1000, 50000])
+		# con_scheduler = ConstantLR(optimizer, factor=1.0, total_iters=(50000-1000))
+		# mul_scheduler = ConstantLR(optimizer, factor=0.95, total_iters=25000)
+		# scheduler = SequentialLR(optimizer, [lin_scheduler, con_scheduler, mul_scheduler], milestones=[1000, 50000])
 		return 	{"optimizer":optimizer, "lr_scheduler":{
-											"scheduler": scheduler, "interval": "step"
+											"scheduler": lin_scheduler, "interval": "step"
 										}
 				}
 	
