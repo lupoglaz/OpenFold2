@@ -13,7 +13,7 @@ from custom_config import tiny_config
 import sys
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, MultiplicativeLR
+from torch.optim.lr_scheduler import SequentialLR, LinearLR, ConstantLR
 from typing import Any, Dict
 
 class ExponentialMovingAverage:
@@ -82,6 +82,7 @@ class AlphaFoldModule(pl.LightningModule):
 		return ret, total_loss
 
 	def training_step(self, feature_dict, batch_idx):
+		print(feature_dict)
 		batch = self.af2features(feature_dict, random_seed=42)
 		ret, total_loss = self.af2(batch, is_training=False, return_representations=False)
 		self.logging(ret)
@@ -99,9 +100,6 @@ class AlphaFoldModule(pl.LightningModule):
 										}
 				}
 	
-	def lr_scheduler_step(self, scheduler, optimizer_idx, metric):
-    	scheduler.step(epoch=self.current_epoch)
-
 	def on_before_zero_grad(self, optimizer: torch.optim.Optimizer) -> None:
 		self.ema.update(self.af2)
 		return super().on_before_zero_grad(optimizer)
@@ -141,22 +139,24 @@ if __name__=='__main__':
 	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
 	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
 	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
-	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
 	parser.add_argument('-model_name', default='model_tiny', type=str)
 	parser.add_argument('-num_gpus', default=1, type=int)
+	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
 	parser.add_argument('-max_iter', default=75000, type=int)
 
 	args = parser.parse_args()
-	args.data_dir = Path(args.data_dir)
 	args.dataset_dir = Path(args.dataset_dir)
 	
 	logger = TensorBoardLogger(args.log_dir, name=args.model_name)
 	data = DataModule(args.dataset_dir)
 	model = AlphaFoldModule(tiny_config)
+	num_epochs = int((args.max_iter * args.num_accum) / float(len(data.data_train)))
 	trainer = pl.Trainer(	gpus=args.num_gpus, logger=logger,
-							max_epochs=10000, 
+							max_epochs=num_epochs,
+							num_nodes=args.num_nodes, 
+							strategy="ddp", 
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm'
