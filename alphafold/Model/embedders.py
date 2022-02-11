@@ -133,7 +133,7 @@ class RecycleEmbedding(nn.Module):
 	def forward(self, batch:Mapping[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
 		msa_act = None
 		pair_act = None
-		if self.config.recycle_pos and 'prev_pos' in batch:
+		if self.config.recycle_pos and ('prev_pos' in batch):
 			prev_pseudo_beta = self.pseudo_beta_fn(batch['aatype'], batch['prev_pos'], None)
 			dgram = self.dgram_from_positions(prev_pseudo_beta)
 			pair_act = self.prev_pos_linear(dgram)

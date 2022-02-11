@@ -29,7 +29,7 @@ def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,
 			if not(broadcast_dim is None):
 				shape[broadcast_dim] = 1
 			keep_rate = 1.0 - rate
-			p = tensor.new_zeros().fill_(keep_rate)
+			p = torch.zeros_like(tensor).fill_(keep_rate)
 			keep = torch.bernoulli(p)
 			return keep * tensor / keep_rate
 		else:
@@ -160,7 +160,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 
 		rec_msa_act, rec_pair_act = self.recycle_emb(batch)
 		if not(rec_msa_act is None):
-			inp_msa_act = inp_msa_act.index_add(0, 0, rec_msa_act)
+			inp_msa_act[0] += rec_msa_act
 		if not(rec_pair_act is None):
 			inp_pair_act += rec_pair_act
 
@@ -224,7 +224,7 @@ class AlphaFoldIteration(nn.Module):
 			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),
 			'distogram': (functools.partial(DistogramHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
 			'structure_module': (functools.partial(StructureModule, num_feat_1d=evo_conf.seq_channel, 
-								num_feat_2d=evo_conf.pair_channel, compute_loss=compute_loss), self.HIGH),
+								num_feat_2d=evo_conf.pair_channel), self.HIGH),
 			'predicted_lddt': (functools.partial(PredictedLDDTHead, num_feat_1d=evo_conf.seq_channel), self.LOW),
 			'predicted_aligned_error': (functools.partial(PredictedAlignedErrorHead, num_feat_2d=evo_conf.pair_channel), self.LOW),
 			'experimentally_resolved': (functools.partial(ExperimentallyResolvedHead, num_feat_1d=evo_conf.seq_channel), self.LOW)
@@ -250,14 +250,15 @@ class AlphaFoldIteration(nn.Module):
 		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer')
 
 	def forward(self, ensembled_batch, non_ensembled_batch, 
-				is_training:bool=False, ensemble_representations:bool=False, return_representations:bool=False):
+				is_training:bool=False, ensemble_representations:bool=False, 
+				compute_loss:bool=False):
 		
 		num_ensemble = torch.Tensor([ensembled_batch['seq_length'].size(0)])
 		if not ensemble_representations:
 			assert ensembled_batch['seq_length'].size(0) == 1
 
 		batch0 = {k:v[0] for k,v in ensembled_batch.items()}
-		non_ensembled_batch.update(batch0)
+		batch0.update(non_ensembled_batch)
 		representations = self.evoformer_module(batch0, is_training)
 		
 		# msa_representations = representations['msa']
@@ -285,13 +286,13 @@ class AlphaFoldIteration(nn.Module):
 			ret[name] = head(representations, batch, is_training)
 			if 'representations' in ret[name]:
 				representations.update(ret[name].pop('representations'))
-			if self.compute_loss:
+			if compute_loss:
 				if name in ('predicted_aligned_error', 'predicted_lddt'):
 					total_loss += loss(head, head_config, ret, name, filter_ret=False)
 				else:
 					total_loss += loss(head, head_config, ret, name, filter_ret=True)
 		
-		if self.compute_loss:
+		if compute_loss:
 			return ret, total_loss
 		else:
 			return ret
@@ -313,17 +314,17 @@ class AlphaFold(nn.Module):
 
 	def forward(self, batch, 
 				is_training:bool=False, compute_loss:bool=False, 
-				ensemble_representations:bool=False, return_representations=False):
+				ensemble_representations:bool=False, 
+				iter_num_recycling:torch.Tensor=None):
 
 		batch_size, num_residues = batch['aatype'].shape
-		inf = batch['target_feat'].new_tensor([1e9])
-
+		
 		def get_prev(ret):
 			return {'prev_pos': ret['structure_module']['final_atom_positions'].detach(),
 					'prev_msa_first_row': ret['representations']['msa_first_row'].detach(),
 					'prev_pair': ret['representations']['pair'].detach()}
 
-		def do_call(prev, recycle_idx, compute_loss:bool=compute_loss):
+		def do_call(prev, recycle_idx, compute_loss:bool=False, is_training:bool=False):
 			if self.config.resample_msa_in_recycling:
 				num_ensemble = batch_size // (self.config.num_recycle + 1)
 				def slice_recycle_idx(x):
@@ -339,40 +340,28 @@ class AlphaFold(nn.Module):
 			non_ensembled_batch = prev
 			return self.impl(ensembled_batch, non_ensembled_batch, 
 							is_training=is_training, 
-							ensemble_representations=ensemble_representations)
+							ensemble_representations=ensemble_representations,
+							compute_loss=compute_loss)
 
 		if self.config.num_recycle:
 			emb_config = self.config.embeddings_and_evoformer
 			prev = {'prev_pos': batch['target_feat'].new_zeros(num_residues, residue_constants.atom_type_num, 3),
 					'prev_msa_first_row':batch['target_feat'].new_zeros(num_residues, emb_config.msa_channel),
 					'prev_pair':batch['target_feat'].new_zeros(num_residues, num_residues, emb_config.pair_channel)}
-			if 'iter_num_recycling' in 	batch:
-				num_iter = batch['iter_num_recycling'][0].item()
+			if not(iter_num_recycling is None):
+				num_iter = iter_num_recycling.item()
 				num_iter = min(num_iter, self.config.num_recycle)
 			else:
 				num_iter = self.config.num_recycle
 
-			def pw_dist(a):
-				a_norm = torch.square(a).sum(dim=-1)
-				return torch.square(torch.abs(a_norm[:,None] + a_norm[None,:] - 2 * a @ a.T))
-
 			for i in range(num_iter):
 				with torch.no_grad():
-					_prev = get_prev(do_call(prev, recycle_idx=i, compute_loss=False))
-					ca, _ca = prev['prev_pos'][:, 1, :], _prev['prev_pos'][:, 1, :]
-					_tol = torch.sqrt(torch.square(pw_dist(ca) - pw_dist(_ca)).mean())
-					prev = _prev
-					tol = _tol
-					recycles = i+1
-
-				if _tol < self.config.recycle_tol:
-					break
+					prev = get_prev(do_call(prev, recycle_idx=i, compute_loss=False, is_training=is_training))
 		else:
 			prev = {}
 			num_iter = 0
-			recycles, tol = 0, inf
 
-		ret, total_loss = do_call(prev=prev, recycle_idx=num_iter)
+		ret, total_loss = do_call(prev=prev, recycle_idx=num_iter, compute_loss=True, is_training=is_training)
 		return ret, total_loss
 				
 

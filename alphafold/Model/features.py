@@ -60,9 +60,9 @@ class AlphaFoldFeatures(nn.Module):
 		
 		raw_features = dict(raw_features)
 		num_res = int(raw_features['seq_length'][0])
-				
+		
+		cfg = copy.deepcopy(self.config.data)
 		if num_res < self.config.data.eval.crop_size:
-			cfg = copy.deepcopy(self.config.data)
 			with cfg.unlocked():
 				cfg.eval.crop_size = num_res
 		mode_cfg = cfg['eval']

@@ -322,12 +322,11 @@ class StructureModule(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/folding.py#L464
 	"""
-	def __init__(self, config, global_config, num_feat_1d:int, num_feat_2d:int, compute_loss:bool=False) -> None:
+	def __init__(self, config, global_config, num_feat_1d:int, num_feat_2d:int) -> None:
 		super(StructureModule, self).__init__()
 		self.config = config
 		self.global_config = global_config
-		self.compute_loss = compute_loss
-
+		
 		self.single_layer_norm = nn.LayerNorm(num_feat_1d)
 		self.pair_layer_norm = nn.LayerNorm(num_feat_2d)
 		self.initial_projection = nn.Linear(num_feat_1d, self.config.num_channel)
@@ -430,11 +429,8 @@ class StructureModule(nn.Module):
 			'final_atom_mask': batch['atom37_atom_exists'],
 			'final_affines': traj[-1]
 		}
-		if self.compute_loss:
-			return ret
-		else:
-			return {k: ret[k] for k in {'final_atom_positions', 'final_atom_mask', 'representations'}}
-
+		return ret
+		
 	def loss(self, value:Dict[str, torch.Tensor], batch:Dict[str, torch.Tensor]):
 		ret = { 'loss': 0.0,
 				'metrics': {}
