@@ -3,7 +3,7 @@
 #SBATCH --partition=cpu
 #SBATCH --ntasks=1
 #SBATCH --mem=16000
-#SBATCH --time=03:00:00
+#SBATCH --time=30:00:00
 #SBATCH --output=/home/g.derevyanko/Logs/OpenFold2/Dataset/tRosettaConvert_%j.log
 
 module load gpu/cuda-11.3
