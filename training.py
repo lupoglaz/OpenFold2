@@ -160,7 +160,7 @@ if __name__=='__main__':
 	args.dataset_dir = Path(args.dataset_dir)
 	
 	logger = TensorBoardLogger(args.log_dir, name=args.model_name)
-	data = DataModule(args.dataset_dir, batch_size=args.num_gpus)
+	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
 	num_epochs = int((args.max_iter * args.num_accum) / float(len(data.data_train)))

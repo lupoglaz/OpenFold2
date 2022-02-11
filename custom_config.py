@@ -18,7 +18,7 @@ def model_config(name: str) -> ml_collections.ConfigDict:
 CONFIG_DIFFS = {
 	'model_tiny': {},
 	'model_small': {
-		'data.eval.crop_size': 256,
+		'data.eval.crop_size': 200,
 		'model.embeddings_and_evoformer.evoformer_num_block': 24,
 		'model.num_recycle': 2
 	}
