@@ -1,11 +1,30 @@
 import ml_collections
+import copy
 
 NUM_RES = 'num residues placeholder'
 NUM_MSA_SEQ = 'msa placeholder'
 NUM_EXTRA_SEQ = 'extra msa placeholder'
 NUM_TEMPLATES = 'num templates placeholder'
 
-tiny_config = ml_collections.ConfigDict({
+def model_config(name: str) -> ml_collections.ConfigDict:
+	"""Get the ConfigDict of a CASP14 model."""
+
+	if name not in CONFIG_DIFFS:
+		raise ValueError(f'Invalid model name {name}.')
+	cfg = copy.deepcopy(CUSTOM_CONFIG)
+	cfg.update_from_flattened_dict(CONFIG_DIFFS[name])
+	return cfg
+
+CONFIG_DIFFS = {
+	'model_tiny': {},
+	'model_small': {
+		'data.eval.crop_size': 256,
+		'model.embeddings_and_evoformer.evoformer_num_block': 24,
+		'model.num_recycle': 2
+	}
+}
+
+CUSTOM_CONFIG = ml_collections.ConfigDict({
 	'data': {
 		'common': {
 			'masked_msa': {
@@ -76,7 +95,7 @@ tiny_config = ml_collections.ConfigDict({
 				'true_msa': [NUM_MSA_SEQ, NUM_RES]
 			},
 			'fixed_size': True,
-			'crop_size': 256,
+			'crop_size': 128,
 			'subsample_templates': False,  # We want top templates.
 			'masked_msa_replace_fraction': 0.15,
 			'max_msa_clusters': 512,
@@ -160,8 +179,8 @@ tiny_config = ml_collections.ConfigDict({
 				'max_bin': 20.75,
 				'num_bins': 15
 			},
-			'recycle_features': False,
-			'recycle_pos': False,
+			'recycle_features': True,
+			'recycle_pos': True,
 			'seq_channel': 384,
 			'template': {
 				'attention': {
@@ -295,7 +314,7 @@ tiny_config = ml_collections.ConfigDict({
 				'weight': 2.0
 			},
 		},
-		'num_recycle': 0,
+		'num_recycle': 2,
 		'recycle_tol': 0.0,
 		'resample_msa_in_recycling': False
 	},

@@ -3,21 +3,21 @@ import subprocess
 from pathlib import Path
 import pickle
 import torch
-from alphafold.Data.dataset import get_fasta_stream, get_pdb_stream
+from alphafold.Data.dataset import GeneralFileData, get_stream
 from alphafold.Data.pipeline import DataPipeline
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	# parser.add_argument('-fasta_dir', default='/media/HDD/AlphaFold2Dataset/Sequences', type=str)
-	# parser.add_argument('-pdb_dir', default='/media/HDD/AlphaFold2Dataset/Structures', type=str)
-	# parser.add_argument('-output_msa_dir', default='/media/HDD/AlphaFold2Dataset/Alignments', type=str)
-	# parser.add_argument('-output_feat_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
-	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
-	parser.add_argument('-fasta_dir', default='/media/lupoglaz/AlphaFold2Dataset/Sequences', type=str)
-	parser.add_argument('-pdb_dir', default='/media/lupoglaz/AlphaFold2Dataset/Structures', type=str)
-	parser.add_argument('-output_msa_dir', default='/media/lupoglaz/AlphaFold2Dataset/Alignments', type=str)
-	parser.add_argument('-output_feat_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
-	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
+	parser.add_argument('-fasta_dir', default='/media/HDD/AlphaFold2Dataset/Sequences', type=str)
+	parser.add_argument('-pdb_dir', default='/media/HDD/AlphaFold2Dataset/Structures', type=str)
+	parser.add_argument('-output_msa_dir', default='/media/HDD/AlphaFold2Dataset/Alignments', type=str)
+	parser.add_argument('-output_feat_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
+	parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	# parser.add_argument('-fasta_dir', default='/media/lupoglaz/AlphaFold2Dataset/Sequences', type=str)
+	# parser.add_argument('-pdb_dir', default='/media/lupoglaz/AlphaFold2Dataset/Structures', type=str)
+	# parser.add_argument('-output_msa_dir', default='/media/lupoglaz/AlphaFold2Dataset/Alignments', type=str)
+	# parser.add_argument('-output_feat_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	# parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
 	
 	parser.add_argument('-jackhmmer_binary_path', default='jackhmmer', type=str)
 	parser.add_argument('-hhblits_binary_path', default='hhblits', type=str)
@@ -73,18 +73,22 @@ if __name__=='__main__':
 	args.output_feat_dir.mkdir(parents=True, exist_ok=True)
 	args.fasta_dir.mkdir(parents=True, exist_ok=True)
 	
-	pdb_stream = get_pdb_stream(args.pdb_dir)
+	# pdb_stream = get_pdb_stream(args.pdb_dir)
+	data = GeneralFileData(args.pdb_dir, allowed_suffixes=['.pdb'])
+	pdb_stream = get_stream(data, batch_size=1, process_fn=None)
+
 	for pdb_path in pdb_stream:
 		pdb_path = Path(pdb_path[0][0]) #one worker
-		pdb_feature_dict, fasta_path = data_pipeline.process_pdb(
-										Path(pdb_path), 
-										fasta_output_dir=args.fasta_dir
-										)
+		output_path = args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl')
+		if output_path.exists():
+			continue
+
+		pdb_feature_dict, sequence, fasta_path = data_pipeline.process_pdb(pdb_path, fasta_output_dir=args.fasta_dir)
 		msa_feature_dict = data_pipeline.process(input_fasta_path=fasta_path,
 											msa_output_dir=args.output_msa_dir,
 											feat_output_dir=None
 											)
 		feature_dict = {**msa_feature_dict, **pdb_feature_dict}
-		with open(args.output_feat_dir / Path(f'{pdb_path.stem.lower()}_features.pkl'), 'wb') as f:
+		with open(output_path, 'wb') as f:
 			pickle.dump(feature_dict, f, protocol=4)
 		

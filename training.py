@@ -7,12 +7,12 @@ from alphafold.Data.dataset import GeneralFileData, get_stream
 from alphafold.Data.pipeline import DataPipeline
 from alphafold.Model.features import AlphaFoldFeatures
 from alphafold.Model.alphafold import AlphaFold
-from alphafold.Model import model_config
 from alphafold.Common import protein
-from custom_config import tiny_config
+from custom_config import model_config
 import sys
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.plugins import DDPPlugin
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, ConstantLR
 from typing import Any, Dict
 
@@ -48,31 +48,34 @@ class ExponentialMovingAverage:
 class AlphaFoldModule(pl.LightningModule):
 	def __init__(self, config):
 		super().__init__()
-		self.af2features = AlphaFoldFeatures(config=config, device='cuda:0', is_training=True)
-		# self.af2features = AlphaFoldFeatures(config=config, device='cpu', is_training=True)
+		self.af2features = AlphaFoldFeatures(config=config, device=None, is_training=True)
 		self.af2 = AlphaFold(config=config.model, target_dim=22, msa_dim=49, extra_msa_dim=25, compute_loss=True)
 		self.iter = 0
 		self.ema = ExponentialMovingAverage(self.af2, 0.999)
-		if self.ema.device != self.af2features.device:
-			self.ema.to(self.af2features.device)
-
+		
 	def logging(self, ret):
 		for head_name in ret.keys():
 			if 'loss' in ret[head_name].keys():
-				self.logger.experiment.add_scalar(f"Heads/{head_name}_loss", ret[head_name]['loss'].item(), self.iter)
+				loss_mean = torch.mean(self.all_gather(ret[head_name]['loss']))
+				if self.trainer.is_global_zero:
+					self.logger.experiment.add_scalar(f"Heads/{head_name}_loss", loss_mean.item(), self.iter)
 		
 		for key in ["fape", "sidechain_fape", "chi_loss", "angle_norm_loss"]:
 			metric = ret['structure_module'][key]
-			self.logger.experiment.add_scalar(f"Structure/Losses/{key}", metric.item(), self.iter)
+			metric_mean = torch.mean(self.all_gather(metric))
+			if self.trainer.is_global_zero:
+				self.logger.experiment.add_scalar(f"Structure/Losses/{key}", metric_mean.item(), self.iter)
 		
 		for metric_name in ret['structure_module']['metrics'].keys():
 			metric = ret['structure_module']['metrics'][metric_name]
-			self.logger.experiment.add_scalar(f"Structure/Metrics/{metric_name}", metric.item(), self.iter)
+			metric_mean = torch.mean(self.all_gather(metric))
+			if self.trainer.is_global_zero:
+				self.logger.experiment.add_scalar(f"Structure/Metrics/{metric_name}", metric_mean.item(), self.iter)
 
 		
 	def forward(self, feature_dict, pdb_path:Path=None):
 		batch = self.af2features(feature_dict, random_seed=42)
-		ret, total_loss = self.af2(batch, is_training=False, return_representations=False)
+		ret, total_loss = self.af2(batch, is_training=False)
 		
 		if not(pdb_path is None):
 			protein_pdb = protein.from_prediction(features=batch, result=ret)
@@ -82,16 +85,23 @@ class AlphaFoldModule(pl.LightningModule):
 		return ret, total_loss
 
 	def training_step(self, feature_dict, batch_idx):
-		print(feature_dict)
+		if self.af2features.device is None:
+			self.af2features.device = self.device
+		if self.ema.device != self.device:
+			self.ema.to(self.device)
+			
+		num_recycle = torch.randint(low=0, high=self.af2.config.num_recycle+1, size=(1,))
+		num_recycle = self.trainer.accelerator.broadcast(num_recycle, src=0)
+		
 		batch = self.af2features(feature_dict, random_seed=42)
-		ret, total_loss = self.af2(batch, is_training=False, return_representations=False)
+		ret, total_loss = self.af2(batch, is_training=True, iter_num_recycling=num_recycle)
 		self.logging(ret)
 		self.iter += 1
 		return total_loss
 
 	def configure_optimizers(self):
 		optimizer = torch.optim.Adam(self.af2.parameters(), lr=1e-3, eps=1e-8)
-		lin_scheduler = LinearLR(optimizer, start_factor=0.0, end_factor=1.0, total_iters=1000)
+		lin_scheduler = LinearLR(optimizer, start_factor=0.01, end_factor=0.99, total_iters=1000)
 		# con_scheduler = ConstantLR(optimizer, factor=1.0, total_iters=(50000-1000))
 		# mul_scheduler = ConstantLR(optimizer, factor=0.95, total_iters=25000)
 		# scheduler = SequentialLR(optimizer, [lin_scheduler, con_scheduler, mul_scheduler], milestones=[1000, 50000])
@@ -112,8 +122,9 @@ class AlphaFoldModule(pl.LightningModule):
 		return super().on_save_checkpoint(checkpoint)
 
 class DataModule(pl.LightningDataModule):
-	def __init__(self, train_dataset_dir:Path) -> None:
+	def __init__(self, train_dataset_dir:Path, batch_size=1) -> None:
 		super(DataModule, self).__init__()
+		self.batch_size = batch_size
 		self.data_train = GeneralFileData(train_dataset_dir, allowed_suffixes=['.pkl'])
 		    
 	def train_dataloader(self):
@@ -123,7 +134,7 @@ class DataModule(pl.LightningDataModule):
 			with open(file_path_list[0], 'rb') as f:
 				return pickle.load(f)
 
-		return get_stream(self.data_train, batch_size=1, process_fn=load_pkl)
+		return get_stream(self.data_train, batch_size=self.batch_size, process_fn=load_pkl)
 	
 	def test_dataloader(self):
 		def load_pkl(batch):
@@ -132,16 +143,15 @@ class DataModule(pl.LightningDataModule):
 			with open(file_path_list[0], 'rb') as f:
 				return pickle.load(f)
 
-		return get_stream(self.data_train, batch_size=1, process_fn=load_pkl)
+		return get_stream(self.data_train, batch_size=self.batch_size, process_fn=load_pkl)
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')
-	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
-	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
-	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
+	# parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
-	parser.add_argument('-model_name', default='model_tiny', type=str)
-	parser.add_argument('-num_gpus', default=1, type=int)
+	parser.add_argument('-model_name', default='model_small', type=str)
+	parser.add_argument('-num_gpus', default=2, type=int) #per node
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
 	parser.add_argument('-max_iter', default=75000, type=int)
@@ -150,13 +160,16 @@ if __name__=='__main__':
 	args.dataset_dir = Path(args.dataset_dir)
 	
 	logger = TensorBoardLogger(args.log_dir, name=args.model_name)
-	data = DataModule(args.dataset_dir)
-	model = AlphaFoldModule(tiny_config)
+	data = DataModule(args.dataset_dir, batch_size=args.num_gpus)
+	config = model_config(args.model_name)
+	model = AlphaFoldModule(config)
 	num_epochs = int((args.max_iter * args.num_accum) / float(len(data.data_train)))
-	trainer = pl.Trainer(	gpus=args.num_gpus, logger=logger,
+	trainer = pl.Trainer(	accelerator="gpu",
+							gpus=args.num_gpus,
+							logger=logger,
 							max_epochs=num_epochs,
 							num_nodes=args.num_nodes, 
-							strategy="ddp", 
+							strategy=DDPPlugin(find_unused_parameters=False), 
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm'
