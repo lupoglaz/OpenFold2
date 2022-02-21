@@ -163,17 +163,20 @@ if __name__=='__main__':
 	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
-	num_epochs = int((args.max_iter * args.num_accum) / float(len(data.data_train)))
+	# num_epochs = int((args.max_iter *args.num * args.num_accum) / float(len(data.data_train)))
+	# print(num_epochs)
 	trainer = pl.Trainer(	accelerator="gpu",
 							gpus=args.num_gpus,
 							logger=logger,
-							max_epochs=num_epochs,
+							max_steps=args.max_iter,
 							num_nodes=args.num_nodes, 
 							strategy=DDPPlugin(find_unused_parameters=False), 
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm',
-							precision=16, amp_backend="native"
+							precision=16, amp_backend="native",
+							enable_progress_bar=False#,
+							#resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_0')/Path("checkpoints/epoch=4-step=4684.ckpt")
  						)
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)

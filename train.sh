@@ -24,5 +24,5 @@ srun python training.py \
 -model_name model_small \
 -num_gpus 4 \
 -num_nodes 4 \
--num_accum 1 \
+-num_accum 4 \
 -max_iter 75000
