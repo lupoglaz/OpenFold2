@@ -177,6 +177,7 @@ CONFIG = ml_collections.ConfigDict({
 			'max_msa_clusters': 512,
 			'max_templates': 4,
 			'num_ensemble': 1,
+			'crop_size': 128, #George, added this for fixed size training.
 		},
 	},
 	'model': {

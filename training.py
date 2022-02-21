@@ -147,11 +147,11 @@ class DataModule(pl.LightningDataModule):
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')
-	parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
-	# parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
+	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
-	parser.add_argument('-model_name', default='model_small', type=str)
-	parser.add_argument('-num_gpus', default=2, type=int) #per node
+	parser.add_argument('-model_name', default='model_tiny', type=str)
+	parser.add_argument('-num_gpus', default=1, type=int) #per node
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
 	parser.add_argument('-max_iter', default=75000, type=int)
@@ -172,7 +172,8 @@ if __name__=='__main__':
 							strategy=DDPPlugin(find_unused_parameters=False), 
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
-							gradient_clip_algorithm = 'norm'
+							gradient_clip_algorithm = 'norm',
+							precision=16, amp_backend="native"
  						)
 	trainer.fit(model, data)
 	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
