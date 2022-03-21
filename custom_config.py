@@ -1,5 +1,6 @@
 import ml_collections
 import copy
+from alphafold.Model.config import CONFIG
 
 NUM_RES = 'num residues placeholder'
 NUM_MSA_SEQ = 'msa placeholder'
@@ -12,11 +13,31 @@ def model_config(name: str) -> ml_collections.ConfigDict:
 	if name not in CONFIG_DIFFS:
 		raise ValueError(f'Invalid model name {name}.')
 	cfg = copy.deepcopy(CUSTOM_CONFIG)
+	# cfg = copy.deepcopy(CONFIG)
 	cfg.update_from_flattened_dict(CONFIG_DIFFS[name])
 	return cfg
 
 CONFIG_DIFFS = {
-	'model_tiny': {},
+	'model_tiny': {
+		'data.eval.crop_size': 128,
+		'data.common.max_extra_msa': 256,
+		'data.common.num_recycle': 0,
+		'data.common.resample_msa_in_recycling': False,
+		'data.common.use_templates': False,
+		'model.embeddings_and_evoformer.evoformer_num_block': 4,
+		'model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias.num_head': 4,
+		'model.embeddings_and_evoformer.evoformer.msa_column_attention.num_head': 4,
+		'model.embeddings_and_evoformer.evoformer.outer_product_mean.num_outer_channel': 16,
+		'model.embeddings_and_evoformer.evoformer.triangle_attention_starting_node.num_head': 2,
+		'model.embeddings_and_evoformer.evoformer.triangle_attention_ending_node.num_head': 2,
+		'model.embeddings_and_evoformer.evoformer.triangle_multiplication_outgoing.num_intermediate_channel': 32,
+		'model.embeddings_and_evoformer.evoformer.triangle_multiplication_incoming.num_intermediate_channel': 32,
+		'model.embeddings_and_evoformer.extra_msa_channel': 32,
+		'model.embeddings_and_evoformer.extra_msa_stack_num_block': 2,
+		'model.embeddings_and_evoformer.msa_channel': 64,
+		'model.embeddings_and_evoformer.pair_channel': 64,
+		'model.num_recycle': 2
+	},
 	'model_small': {
 		'data.eval.crop_size': 200,
 		'model.embeddings_and_evoformer.evoformer_num_block': 24,
