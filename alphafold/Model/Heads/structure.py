@@ -11,6 +11,7 @@ from alphafold.Common import residue_constants
 from alphafold.Model.affine import QuatAffine, rigids_apply, vecs_apply, vecs_to_tensor, rigids_from_tensor_flat12, vecs_from_tensor
 from alphafold.Model import protein
 from alphafold.Model.Utils.tensor_utils import batched_gather
+from alphafold.Model.linear import Linear
 
 class InvariantPointAttention(nn.Module):
 	"""
@@ -36,13 +37,13 @@ class InvariantPointAttention(nn.Module):
 		self.point_weights = sqrt(1.0/(num_logit_terms*point_variance))
 		self.attention_2d_weights = sqrt(1.0/num_logit_terms)
 
-		self.q_scalar = nn.Linear(num_feat_1d, self.num_head * self.num_scalar_qk)
-		self.kv_scalar = nn.Linear(num_feat_1d, self.num_head*(self.num_scalar_v + self.num_scalar_qk))
-		self.q_point_local = nn.Linear(num_feat_1d, self.num_head * 3 * self.num_point_qk)
-		self.kv_point_local = nn.Linear(num_feat_1d, self.num_head * 3 * (self.num_point_qk + self.num_point_v))
+		self.q_scalar = Linear(num_feat_1d, self.num_head * self.num_scalar_qk)
+		self.kv_scalar = Linear(num_feat_1d, self.num_head*(self.num_scalar_v + self.num_scalar_qk))
+		self.q_point_local = Linear(num_feat_1d, self.num_head * 3 * self.num_point_qk)
+		self.kv_point_local = Linear(num_feat_1d, self.num_head * 3 * (self.num_point_qk + self.num_point_v))
 		self.trainable_point_weights = nn.Parameter(torch.ones(self.num_head))
-		self.attention_2d = nn.Linear(num_feat_2d, self.num_head)
-		self.output_pojection = nn.Linear(self.num_head * (num_feat_2d + self.num_scalar_v + 4*self.num_point_v), self.config.num_channel)
+		self.attention_2d = Linear(num_feat_2d, self.num_head)
+		self.output_pojection = Linear(self.num_head * (num_feat_2d + self.num_scalar_v + 4*self.num_point_v), self.config.num_channel)
 
 		self.softplus = nn.Softplus()
 		self.softmax = nn.Softmax(dim=-1)
@@ -127,7 +128,6 @@ class InvariantPointAttention(nn.Module):
 										+ torch.pow(result_point_local[1], 2)
 										+ torch.pow(result_point_local[2], 2)))
 		
-
 		result_attention_over_2d = torch.einsum('hij,ijc->ihc', attn, inputs_2d)
 		num_out = self.num_head * result_attention_over_2d.shape[-1]
 		output_features.append(result_attention_over_2d.view(num_res, num_out))
@@ -146,13 +146,18 @@ class MultiRigidSidechain(nn.Module):
 
 		self.num_repr = num_repr
 
-		self.input_projection = nn.ModuleList([nn.Linear(repr_dim, self.config.num_channel)
+		self.input_projection = nn.ModuleList([Linear(repr_dim, self.config.num_channel)
 											for i in range(num_repr)])
-		self.resblock1 = nn.ModuleList([nn.Linear(self.config.num_channel, self.config.num_channel) 
-										for i in range(self.config.num_residual_block)])
-		self.resblock2 = nn.ModuleList([nn.Linear(self.config.num_channel, self.config.num_channel) 
-										for i in range(self.config.num_residual_block)])
-		self.unnormalized_angles = nn.Linear(self.config.num_channel, 14)
+
+		self.resblock1 = nn.ModuleList([Linear(self.config.num_channel, self.config.num_channel, initializer='relu') 
+										for i in range(self.config.num_residual_block-1)])
+		self.resblock1.append(Linear(self.config.num_channel, self.config.num_channel, initializer='final'))
+
+		self.resblock2 = nn.ModuleList([Linear(self.config.num_channel, self.config.num_channel, initializer='relu') 
+										for i in range(self.config.num_residual_block-1)])
+		self.resblock2.append(Linear(self.config.num_channel, self.config.num_channel, initializer='final'))
+
+		self.unnormalized_angles = Linear(self.config.num_channel, 14)
 		self.relu = nn.ReLU()
 
 	def load_weights_from_af2(self, data, rel_path: str='rigid_sidechain', ind:int=None):
@@ -221,12 +226,15 @@ class FoldIteration(nn.Module):
 		self.attention_module = InvariantPointAttention(config, global_config, 
 								num_feat_1d=num_feat_1d, num_feat_2d=num_feat_2d)
 		self.attention_layer_norm = nn.LayerNorm(num_feat_1d)
-		self.transition = nn.ModuleList([nn.Linear(self.config.num_channel, self.config.num_channel) 
-										for i in range(self.config.num_layer_in_transition)])
+		
+		self.transition = nn.ModuleList([Linear(self.config.num_channel, self.config.num_channel, initializer='relu') 
+										for i in range(self.config.num_layer_in_transition-1)])
+		self.transition.append(Linear(self.config.num_channel, self.config.num_channel, initializer='final'))
+
 		self.transition_layer_norm = nn.LayerNorm(self.config.num_channel)
 		self.relu = nn.ReLU()
 
-		self.affine_update = nn.Linear(self.config.num_channel, self.affine_update_size)
+		self.affine_update = Linear(self.config.num_channel, self.affine_update_size)
 		self.side_chain = MultiRigidSidechain(config.sidechain, global_config, num_repr=2, repr_dim=self.config.num_channel)
 
 	def load_weights_from_af2(self, data, rel_path: str='fold_iteration', ind:int=None):
@@ -329,7 +337,7 @@ class StructureModule(nn.Module):
 		
 		self.single_layer_norm = nn.LayerNorm(num_feat_1d)
 		self.pair_layer_norm = nn.LayerNorm(num_feat_2d)
-		self.initial_projection = nn.Linear(num_feat_1d, self.config.num_channel)
+		self.initial_projection = Linear(num_feat_1d, self.config.num_channel)
 
 		self.fold_iteration = FoldIteration(config, global_config, num_feat_1d, num_feat_2d)
 
