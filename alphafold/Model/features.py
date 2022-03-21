@@ -162,6 +162,9 @@ class AlphaFoldFeatures(nn.Module):
 		ensembled_dict = {}
 		for feat in ensemble[0].keys():
 			ensembled_dict[feat] = torch.stack([dict_i[feat] for dict_i in ensemble], dim=0)
+			if ensembled_dict[feat].dtype == torch.float64:
+				ensembled_dict[feat] = ensembled_dict[feat].to(dtype=torch.float32)
+
 		
 		return ensembled_dict
 		
