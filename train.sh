@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=8
-#SBATCH --time 5-23:30:00
+#SBATCH --time 3-00:00:00
 #SBATCH --mem=64G
 #SBATCH --output=/home/g.derevyanko/Logs/OpenFold2/Train/OpenFold2Train_%j.log
 
@@ -24,5 +24,5 @@ srun python training.py \
 -model_name model_small \
 -num_gpus 4 \
 -num_nodes 4 \
--num_accum 4 \
+-num_accum 8 \
 -max_iter 75000
