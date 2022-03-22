@@ -256,7 +256,7 @@ class AlphaFoldIteration(nn.Module):
 		num_ensemble = torch.Tensor([ensembled_batch['seq_length'].size(0)])
 		if not ensemble_representations:
 			assert ensembled_batch['seq_length'].size(0) == 1
-
+		
 		batch0 = {k:v[0] for k,v in ensembled_batch.items()}
 		batch0.update(non_ensembled_batch)
 		representations = self.evoformer_module(batch0, is_training)

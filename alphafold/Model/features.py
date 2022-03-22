@@ -99,8 +99,7 @@ class AlphaFoldFeatures(nn.Module):
 			tensor_dict = protein.make_backbone_frames(tensor_dict)
 			tensor_dict = protein.make_chi_angles(tensor_dict)
 			
-
-	
+			
 		if cfg.common.use_templates:
 			raise NotImplementedError()
 

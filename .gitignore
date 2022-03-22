@@ -4,6 +4,7 @@ Log/*
 LogTrain/*
 *.txt
 *.pdb
+*.json
 
 # Alignments
 *.sto
