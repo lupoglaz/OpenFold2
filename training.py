@@ -155,6 +155,7 @@ if __name__=='__main__':
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
 	parser.add_argument('-max_iter', default=75000, type=int)
+	parser.add_argument('-precision', default=32, type=int)
 
 	args = parser.parse_args()
 	args.dataset_dir = Path(args.dataset_dir)
@@ -174,7 +175,8 @@ if __name__=='__main__':
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm',
-							precision=16, amp_backend="native",
+							precision=args.precision, 
+							amp_backend="native",
 							enable_progress_bar=False#,
 							#resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_0')/Path("checkpoints/epoch=4-step=4684.ckpt")
  						)
