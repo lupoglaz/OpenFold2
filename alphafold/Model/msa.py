@@ -119,7 +119,7 @@ class MSARowAttentionWithPairBias(nn.Module):
 		assert msa_mask.ndimension() == 2
 		assert self.config.orientation == 'per_row'
 
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=torch.msa_act.dtype)-1.0))[:,None,None,:]
 		msa_act = self.query_norm(msa_act)
 		pair_act = self.feat_2d_norm(pair_act)
 		nonbatched_bias = torch.einsum('qkc,ch->hqk', pair_act, self.feat_2d_weights)
@@ -162,7 +162,7 @@ class MSAColumnAttention(nn.Module):
 
 		msa_act = msa_act.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		assert bias.ndimension() == 4
 
 		msa_act = self.query_norm(msa_act)
@@ -261,7 +261,7 @@ class GlobalAttention(nn.Module):
 
 		q = torch.einsum('ba,ahc->bhc', q_avg, self.q_weights) * self.key_dim **(-0.5)
 		k = torch.einsum('bka,ac->bkc', m_data, self.k_weights)
-		bias = (1e9*(q_mask[:,None,:,0].to(dtype=torch.float32) - 1.0))
+		bias = (1e9*(q_mask[:,None,:,0].to(dtype=q_data.dtype) - 1.0))
 
 		logits = torch.einsum('bhc,bkc->bhk', q, k) + bias
 		weights = self.softmax(logits)
@@ -312,7 +312,7 @@ class MSAColumnGlobalAttention(nn.Module):
 
 		msa_act = msa_act.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		msa_mask = msa_mask.unsqueeze(dim=-1)
 		assert bias.ndimension() == 4
 

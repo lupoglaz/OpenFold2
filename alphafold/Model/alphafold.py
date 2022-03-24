@@ -10,7 +10,8 @@ from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
 from typing import Mapping, OrderedDict
 import functools
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
+from deepspeed import checkpointing as ds_chk
 
 def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,  
 					global_config, 
@@ -93,6 +94,7 @@ class EvoformerIteration(nn.Module):
 	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
 					is_training: bool=False) -> Mapping[str, torch.Tensor]:
 		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
+
 		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
 		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
 		msa_act = DO(self.msa_transition, msa_act, msa_mask)
@@ -102,7 +104,9 @@ class EvoformerIteration(nn.Module):
 		pair_act = DO(self.triangle_attention_starting_node, pair_act, pair_mask)
 		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask)
 		pair_act = DO(self.pair_transition, pair_act, pair_mask)
-
+		
+		# print('Pair act sum:', torch.sum(pair_act))
+		# print('MSA act sum:',torch.sum(msa_act))
 		return msa_act, pair_act
 		
 class EmbeddingsAndEvoformer(nn.Module):
@@ -156,6 +160,8 @@ class EmbeddingsAndEvoformer(nn.Module):
 			module.bias.data.copy_(torch.from_numpy(b))
 		
 	def forward(self, batch: Mapping[str, torch.Tensor], is_training:bool=False, safe_key=None):
+		# print('Embedding dtype:', self.input_emb.preprocess_1d.weight.dtype)
+		# print('Target feat dtype:', batch['target_feat'].dtype)
 		inp_msa_act, inp_pair_act = self.input_emb(batch)
 
 		rec_msa_act, rec_pair_act = self.recycle_emb(batch)
@@ -186,7 +192,8 @@ class EmbeddingsAndEvoformer(nn.Module):
 
 		for i, evoformer_iteration in enumerate(self.evoformer_stack):
 			if is_training:
-				msa_act, pair_act = checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
+				# msa_act, pair_act = checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
+				msa_act, pair_act = ds_chk.checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
 			else:
 				msa_act, pair_act = evoformer_iteration(msa_act, pair_act, msa_mask, pair_mask, is_training=is_training)
 			# Seems like it is not necessary

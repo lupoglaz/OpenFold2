@@ -136,6 +136,7 @@ class RecycleEmbedding(nn.Module):
 		if self.config.recycle_pos and ('prev_pos' in batch):
 			prev_pseudo_beta = self.pseudo_beta_fn(batch['aatype'], batch['prev_pos'], None)
 			dgram = self.dgram_from_positions(prev_pseudo_beta)
+			dgram = dgram.to(dtype=batch['prev_pair'].dtype) #need to do this, because we force fp32 for geometry
 			pair_act = self.prev_pos_linear(dgram)
 		
 		if self.config.recycle_features:

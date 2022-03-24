@@ -246,6 +246,21 @@ class QuatAffine(object):
 								r[2][0], r[2][1], r[2][2]), 
 						Vecs(t[0], t[1], t[2]))
 
+	def cast_to(self, dtype=torch.float32):
+		self.quaternion = self.quaternion.to(dtype=dtype)
+		
+		r, t = [], []
+		for r_i in self.rotation:
+			r_vec = []
+			for r_ij in r_i:
+				r_vec.append(r_ij.to(dtype=dtype))
+			r.append(r_vec)
+		self.rotation = r
+
+		for t_i in self.translation:
+			t.append(t_i.to(dtype=dtype))
+		self.translation = t
+
 	def pre_compose(self, update:torch.Tensor):
 		vector_quaternion_update = update[...,:3]
 		trans_update = [update[..., i] for i in range(3,6)]

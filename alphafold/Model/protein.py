@@ -298,10 +298,20 @@ def frame_aligned_point_error(
 	assert pred_positions.x.ndimension() == 1
 	assert target_positions.x.ndimension() == 1
 	assert positions_mask.ndimension() == 1
+	
+	#Making sure that FAPE is computed in float32
+	#Masks can be float16
+	# print('FAPE pred_frames dtype:', pred_frames.rot.xx.dtype)
+	# print('FAPE pred_pos dtype:', pred_positions.x.dtype)
+	# print('FAPE target_frames dtype:', target_frames.rot.xx.dtype)
+	# print('FAPE target_pos dtype:', target_positions.x.dtype)
+	assert pred_frames.rot.xx.dtype == torch.float32
+	assert target_frames.rot.xx.dtype == torch.float32
+	assert pred_positions.x.dtype == torch.float32
+	assert target_positions.x.dtype == torch.float32
+	
 
-	# print('Pred pos', pred_positions.x)
-	# print('Target pos', target_positions.x)
-
+	
 	local_pred_pos = affine.rigids_mul_vecs(
 							affine.rigids_apply(lambda r: r[:, None], affine.rigids_invert(pred_frames)),
 							affine.vecs_apply(lambda x: x[None, :], pred_positions))

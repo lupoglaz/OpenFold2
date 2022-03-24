@@ -336,7 +336,7 @@ class MSARowAttentionWithPairBiasOpt(nn.Module):
 		assert msa_mask.ndimension() == 2
 		assert self.config.orientation == 'per_row'
 
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		msa_act = self.query_norm(msa_act)
 		pair_act = self.feat_2d_norm(pair_act)
 		nonbatched_bias = self.feat_2d_weights(pair_act)
@@ -366,7 +366,7 @@ class MSAColumnAttentionOpt(MSAColumnAttention):
 
 		msa_act = msa_act.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		assert bias.ndimension() == 4
 
 		msa_act = self.query_norm(msa_act)
@@ -397,7 +397,7 @@ class MSAColumnGlobalAttentionOpt(MSAColumnGlobalAttention):
 
 		msa_act = msa_act.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
-		bias = (1e9 * (msa_mask.to(dtype=torch.float32)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		msa_mask = msa_mask.unsqueeze(dim=-1)
 		assert bias.ndimension() == 4
 

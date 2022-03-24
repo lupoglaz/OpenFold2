@@ -18,11 +18,12 @@ from alphafold.Model import protein
 
 
 class AlphaFoldFeatures(nn.Module):
-	def __init__(self, config, device:torch.device=None, is_training:bool=False):
+	def __init__(self, config, device:torch.device=None, is_training:bool=False, dtype=torch.float32):
 		super().__init__()
 		self.config = config
 		self.is_training = is_training
 		self.device = device
+		self.dtype = dtype
 
 	def make_data_config(self, num_res: int) -> Tuple[ml_collections.ConfigDict, List[str]]:
 		"""Makes a data config for the input pipeline."""
@@ -161,9 +162,16 @@ class AlphaFoldFeatures(nn.Module):
 		ensembled_dict = {}
 		for feat in ensemble[0].keys():
 			ensembled_dict[feat] = torch.stack([dict_i[feat] for dict_i in ensemble], dim=0)
-			if ensembled_dict[feat].dtype == torch.float64:
-				ensembled_dict[feat] = ensembled_dict[feat].to(dtype=torch.float32)
-
-		
+					
 		return ensembled_dict
+
+	def convert(self, feature_dict: FeatureDict, 
+					dtypes={torch.float32: torch.float16,
+							torch.float64: torch.float32}) -> FeatureDict:
+		for feat in feature_dict.keys():
+			this_dtype = feature_dict[feat].dtype
+			if this_dtype in dtypes.keys():
+				feature_dict[feat] = feature_dict[feat].to(dtype=dtypes[this_dtype])
+		return feature_dict
+
 		

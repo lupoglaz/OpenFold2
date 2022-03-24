@@ -1,22 +1,26 @@
+import os
+import sys
 import argparse
-from gc import callbacks
-import subprocess
-from pathlib import Path
 import pickle
 import torch
+from pathlib import Path
+from typing import Any, Dict
+
 from alphafold.Data.dataset import GeneralFileData, get_stream
 from alphafold.Data.pipeline import DataPipeline
 from alphafold.Model.features import AlphaFoldFeatures
 from alphafold.Model.alphafold import AlphaFold
 from alphafold.Common import protein
 from custom_config import model_config
-import sys
+
 import pytorch_lightning as pl
 from pytorch_lightning.overrides import LightningDistributedModule
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, ConstantLR
-from typing import Any, Dict
+from pytorch_lightning.plugins.training_type import DeepSpeedPlugin
+from pytorch_lightning.plugins.environments import SLURMEnvironment
+
 
 from Utils.loggers import PerformanceLoggingCallback
 
@@ -91,16 +95,26 @@ class AlphaFoldModule(pl.LightningModule):
 	def training_step(self, feature_dict, batch_idx):
 		if self.af2features.device is None:
 			self.af2features.device = self.device
+		if self.af2features.dtype != self.dtype:
+			self.af2features.dtype = self.dtype
 		if self.ema.device != self.device:
 			self.ema.to(self.device)
+		
+		# print('Trainer dtype:', self.dtype)
+		# print('Feature dict atom_pos dtype:', feature_dict['all_atom_positions'].dtype)
 		
 		num_recycle = torch.randint(low=0, high=self.af2.config.num_recycle+1, size=(1,))
 		num_recycle = self.trainer.accelerator.broadcast(num_recycle, src=0)
 		
 		batch = self.af2features(feature_dict, random_seed=42)
+		batch = self.af2features.convert(batch)
 		ret, total_loss = self.af2(batch, is_training=True, iter_num_recycling=num_recycle)
 		self.logging(ret)
 		self.iter += 1
+		
+		if(torch.isnan(total_loss) or torch.isinf(total_loss)):
+			total_loss = None
+
 		return total_loss
 
 	def configure_optimizers(self):
@@ -163,12 +177,14 @@ if __name__=='__main__':
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
 	parser.add_argument('-model_name', default='model_tiny', type=str)
 	# parser.add_argument('-model_name', default='model_small', type=str)
+	# parser.add_argument('-model_name', default='model_big', type=str)
 	parser.add_argument('-num_gpus', default=1, type=int) #per node
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
-	parser.add_argument('-max_iter', default=5000, type=int)
-	parser.add_argument('-precision', default=32, type=int)
+	parser.add_argument('-max_iter', default=75000, type=int)
+	parser.add_argument('-precision', default=16, type=int)
 	parser.add_argument('-progress_bar', default=1, type=int)
+	parser.add_argument('-deepspeed_config_path', default='deepspeed_config.json', type=str)
 
 	args = parser.parse_args()
 	args.dataset_dir = Path(args.dataset_dir)
@@ -177,18 +193,26 @@ if __name__=='__main__':
 	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
-
+	
+	if "SLURM_JOB_ID" in os.environ:
+		cluster_environment = SLURMEnvironment()
+	else:
+		cluster_environment = None
+	
 	trainer = pl.Trainer(	accelerator="gpu",
 							gpus=args.num_gpus,
 							logger=logger,
 							max_steps=args.max_iter,
 							num_nodes=args.num_nodes, 
-							strategy=CustomDDPPlugin(find_unused_parameters=False),
+							# strategy=CustomDDPPlugin(find_unused_parameters=False),
+							strategy=DeepSpeedPlugin(config=args.deepspeed_config_path),
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm',
 							precision=args.precision, 
 							amp_backend="native",
+							# amp_backend="apex",
+							# amp_level='O3',
 							enable_progress_bar=bool(args.progress_bar),
 							# callbacks = [
 							# 	PerformanceLoggingCallback(Path('perf.json'), args.num_gpus*args.num_nodes)

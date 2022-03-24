@@ -204,9 +204,17 @@ class MultiRigidSidechain(nn.Module):
 		unnormalized_angles = unnormalized_angles.view(act.size(0), 7, 2)
 		angles = self.l2_normalize(unnormalized_angles, dim=-1)
 
+		affine.cast_to(dtype=torch.float32)
+		angles = angles.to(dtype=torch.float32)
 		backb_to_global = affine.to_rigids()
+		# print('Sidechain angles dtype:', angles.dtype)
+		# print('Sidechain frames dtype:', backb_to_global.rot.xx.dtype)
 		all_frames_to_global = protein.torsion_angles_to_frames(aatype, backb_to_global, angles)
 		pred_positions = protein.frames_and_literature_positions_to_atom14_pos(aatype, all_frames_to_global)
+		affine.cast_to(dtype=act.dtype)
+		# print('Sidechain all_frames_to_global dtype:', all_frames_to_global.rot.xx.dtype)
+		# print('Sidechain pred_positions dtype:', pred_positions.x.dtype)
+		
 		outputs = {	'angles_sin_cos': angles,
 					'unnormalized_angles_sin_cos': unnormalized_angles,
 					'atom_pos': pred_positions,
@@ -283,12 +291,13 @@ class FoldIteration(nn.Module):
 
 	def forward(self, activations:torch.Tensor, sequence_mask:torch.Tensor, update_affine:bool, initial_act:torch.Tensor, 
 					is_training:bool=False, static_feat_2d:torch.Tensor=None, aatype:torch.Tensor=None):
-		affine = QuatAffine.from_tensor(activations['affine'].to(dtype=activations['act'].dtype))
+		affine = QuatAffine.from_tensor(activations['affine'])
 		act = activations['act']
+		affine.cast_to(dtype=act.dtype) #Casting to float16
 		attn = self.attention_module(inputs_1d=act, inputs_2d=static_feat_2d, mask=sequence_mask, affine=affine)
 		act = act + attn
 		act = self.attention_layer_norm(act)
-
+		
 		input_act = act
 		for i in range(self.config.num_layer_in_transition):
 			act = self.transition[i](act)
@@ -299,10 +308,14 @@ class FoldIteration(nn.Module):
 
 		if update_affine:
 			affine_update = self.affine_update(act)
-			affine = affine.pre_compose(affine_update)
+			#Not sure if it helps
+			affine.cast_to(dtype=torch.float32) #Casting to float32 to avoid multiplying rotations in float16
+			affine = affine.pre_compose(affine_update.to(dtype=torch.float32))
+			affine.cast_to(dtype=act.dtype) #Casting back to float16
 
 		sc = self.side_chain(affine.scale_translation(self.config.position_scale), [act, initial_act], aatype)
-		outputs = {'affine': affine.to_tensor(), 'sc': sc}
+		#Casting final affines to float32
+		outputs = {'affine': affine.to_tensor().to(dtype=torch.float32), 'sc': sc}
 		new_activations = {'act': act,	'affine': affine.apply_rotation_tensor_fn(torch.detach).to_tensor()}
 
 		return new_activations, outputs
@@ -443,6 +456,22 @@ class StructureModule(nn.Module):
 		ret = { 'loss': 0.0,
 				'metrics': {}
 				}
+		# for key in batch.keys():
+		# 	print(key, batch[key].dtype)
+		# print('   ')
+		# for key in value.keys():
+		# 	if isinstance(value[key], dict):
+		# 		for key1 in value[key]:
+		# 			if isinstance(value[key], torch.Tensor):
+		# 				print(key1, value[key][key1].dtype)
+		# 			else:
+		# 				print(key1)
+		# 	else:
+		# 		if isinstance(value[key], torch.Tensor):
+		# 			print(key, value[key].dtype)
+		# 		else:
+		# 				print(key1)
+		# sys.exit()
 		if self.config.compute_in_graph_metrics:
 			atom14_pred_positions = value['final_atom14_positions']
 			value.update(self.compute_renamed_ground_truth(batch, atom14_pred_positions))
