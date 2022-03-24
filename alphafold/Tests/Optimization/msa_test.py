@@ -10,6 +10,7 @@ from collections import namedtuple
 
 from alphafold.Model.msa import Attention, GlobalAttention, MSARowAttentionWithPairBias, MSAColumnAttention, MSAColumnGlobalAttention
 from alphafold.Model.Opt.msa import AttentionOpt, GlobalAttentionOpt, MSARowAttentionWithPairBiasOpt, MSAColumnAttentionOpt, MSAColumnGlobalAttentionOpt
+from alphafold.Model.Opt.fastfold_msa import AttentionFF
 
 
 from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
@@ -21,7 +22,7 @@ def AttentionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'Attention')
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
-	attn_opt = AttentionOpt(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
+	attn_opt = AttentionFF(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_opt.load_weights_from_af2(params['attention'], None)
 	attn_vanilla = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params['attention'], None)
@@ -184,7 +185,7 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	# AttentionTest(args, config, global_config)
+	AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
 	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
