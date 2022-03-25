@@ -10,7 +10,7 @@ from collections import namedtuple
 
 from alphafold.Model.msa import Attention, GlobalAttention, MSARowAttentionWithPairBias, MSAColumnAttention, MSAColumnGlobalAttention
 from alphafold.Model.Opt.msa import AttentionOpt, GlobalAttentionOpt, MSARowAttentionWithPairBiasOpt, MSAColumnAttentionOpt, MSAColumnGlobalAttentionOpt
-from alphafold.Model.Opt.fastfold_msa import AttentionFF
+from alphafold.Model.Opt.fastfold_msa import AttentionFF, MSAColumnAttentionFF, MSARowAttentionWithPairBiasFF
 
 
 from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
@@ -24,7 +24,7 @@ def AttentionTest(args, config, global_config):
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
 	attn_opt = AttentionFF(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_opt.load_weights_from_af2(params['attention'], None)
-	attn_vanilla = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
+	attn_vanilla = AttentionOpt(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params['attention'], None)
 	
 	attn_vanilla.cuda()
@@ -34,16 +34,16 @@ def AttentionTest(args, config, global_config):
 	feat['nonbatched_bias'] = feat['nonbatched_bias'].to(device='cuda')
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('Attention'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_vanilla = attn_vanilla(q_data=feat['q_data'], m_data=feat['m_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])	
+		res_vanilla = attn_vanilla(q_data=feat['q_data'], m_data=feat['q_data'], bias=feat['bias'].zero_(), nonbatched_bias=feat['nonbatched_bias'])
 		profiler.step()
 	
 	attn_opt.cuda()
 	reporter = MemReporter()
 	handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('AttentionOpt'))
 	with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_opt = attn_opt(q_data=feat['q_data'], m_data=feat['m_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])
+		res_opt = attn_opt(in_data=feat['q_data'], mask=feat['bias'].fill_(1.0), nonbatched_bias=feat['nonbatched_bias'][None,:,:,None])
 		profiler.step()
-	reporter.report()
+	# reporter.report()
 		
 	check_recursive(res_opt, res_vanilla)
 	
@@ -85,7 +85,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 			print('\t' + param)
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
-	attn_opt = MSARowAttentionWithPairBiasOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
+	attn_opt = MSARowAttentionWithPairBiasFF(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
 	attn_vanilla = MSARowAttentionWithPairBias(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
@@ -101,7 +101,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 		alloc_start_vanilla = get_total_alloc()
 		handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('MSARowAttentionWithPairBias'))
 		with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-			res_vanilla = attn_vanilla(feat['msa_act'], feat['msa_mask'], feat['pair_act'])	
+			res_vanilla = attn_vanilla(feat['msa_act'], feat['msa_mask'], feat['pair_act'], is_training=True)	
 			profiler.step()
 		alloc_end_vanilla = get_total_alloc()
 		
@@ -109,7 +109,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 		alloc_start_opt = get_total_alloc()
 		handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('MSARowAttentionWithPairBiasOpt'))
 		with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-			res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], feat['pair_act'])
+			res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], feat['pair_act'], is_training=True)
 			profiler.step()
 		alloc_end_opt = get_total_alloc()
 		
@@ -120,9 +120,9 @@ def MSAColumnAttentionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'MSAColumnAttention')
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_column_attention
-	attn_opt = MSAColumnAttentionOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
+	attn_opt = MSAColumnAttentionFF(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, rel_path='msa_column_attention')
-	attn_vanilla = MSAColumnAttention(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
+	attn_vanilla = MSAColumnAttentionOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_column_attention')
 	
 	attn_vanilla.cuda()
@@ -131,17 +131,17 @@ def MSAColumnAttentionTest(args, config, global_config):
 	reporter = MemReporter()
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('MSAColumnAttention'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_vanilla = attn_vanilla(feat['msa_act'], feat['msa_mask'])	
+		res_vanilla = attn_vanilla(feat['msa_act'], feat['msa_mask'], is_training=True)	
 		profiler.step()
-	reporter.report()
+	# reporter.report()
 	
 	attn_opt.cuda()
 	reporter = MemReporter()
 	handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('MSAColumnAttentionOpt'))
 	with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_opt = attn_opt(feat['msa_act'], feat['msa_mask'])
+		res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], is_training=True)
 		profiler.step()
-	reporter.report()
+	# reporter.report()
 		
 	check_recursive(res_opt, res_vanilla)
 
@@ -185,8 +185,8 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	AttentionTest(args, config, global_config)
+	# AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
 	# MSARowAttentionWithPairBiasTest(args, config, global_config)
-	# MSAColumnAttentionTest(args, config, global_config)
+	MSAColumnAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)

@@ -62,6 +62,8 @@ class AlphaFoldModule(pl.LightningModule):
 		self.ema = ExponentialMovingAverage(self.af2, 0.999)
 		
 	def logging(self, ret):
+		if self.logger is None:
+			return
 		for head_name in ret.keys():
 			if 'loss' in ret[head_name].keys():
 				loss_mean = torch.mean(self.all_gather(ret[head_name]['loss']))
@@ -175,9 +177,12 @@ if __name__=='__main__':
 	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
+	# parser.add_argument('-log_dir', default=None, type=str)
+
 	parser.add_argument('-model_name', default='model_tiny', type=str)
 	# parser.add_argument('-model_name', default='model_small', type=str)
 	# parser.add_argument('-model_name', default='model_big', type=str)
+	
 	parser.add_argument('-num_gpus', default=1, type=int) #per node
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
@@ -189,7 +194,11 @@ if __name__=='__main__':
 	args = parser.parse_args()
 	args.dataset_dir = Path(args.dataset_dir)
 	
-	logger = TensorBoardLogger(args.log_dir, name=args.model_name)
+	if not(args.log_dir is None):
+		logger = TensorBoardLogger(args.log_dir, name=args.model_name)
+	else:
+		logger = None
+
 	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
@@ -220,7 +229,8 @@ if __name__=='__main__':
 							#resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_0')/Path("checkpoints/epoch=4-step=4684.ckpt")
  						)
 	trainer.fit(model, data)
-	trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
+	if not(args.log_dir is None):
+		trainer.save_checkpoint(Path(trainer.logger.log_dir)/Path("checkpoints/final.ckpt"), weights_only=True)
 
 	# ckpt = torch.load(Path("LogTrain/tiny_config_wosv/version_0/checkpoints/final.ckpt"))
 	# model.load_state_dict(ckpt["state_dict"])

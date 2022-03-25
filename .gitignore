@@ -2,6 +2,7 @@
 *.pkl
 Log/*
 LogTrain/*
+checkpoints/*
 *.txt
 *.pdb
 *.json

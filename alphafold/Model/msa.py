@@ -119,7 +119,7 @@ class MSARowAttentionWithPairBias(nn.Module):
 		assert msa_mask.ndimension() == 2
 		assert self.config.orientation == 'per_row'
 
-		bias = (1e9 * (msa_mask.to(dtype=torch.msa_act.dtype)-1.0))[:,None,None,:]
+		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		msa_act = self.query_norm(msa_act)
 		pair_act = self.feat_2d_norm(pair_act)
 		nonbatched_bias = torch.einsum('qkc,ch->hqk', pair_act, self.feat_2d_weights)

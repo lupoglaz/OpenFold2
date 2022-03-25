@@ -120,13 +120,24 @@ class InvariantPointAttention(nn.Module):
 		output_features.append(result_scalar)
 		
 		result_point_global = [r.reshape(num_res, self.num_head*self.num_point_v) for r in result_point_global]
-		result_point_local = affine.invert_point(result_point_global, extra_dims=1)
-		output_features.extend(result_point_local)
 		
-		output_features.append(torch.sqrt(self._dist_epsilon 
-										+ torch.pow(result_point_local[0], 2)
-										+ torch.pow(result_point_local[1], 2)
-										+ torch.pow(result_point_local[2], 2)))
+		## VVV Float32 region (geometry region)
+		affine.cast_to(dtype=torch.float32)
+		result_point_global = [res.to(dtype=torch.float32) for res in result_point_global]
+		
+		result_point_local = affine.invert_point(result_point_global, extra_dims=1)
+		dist = torch.sqrt(self._dist_epsilon 
+							+ torch.pow(result_point_local[0], 2)
+							+ torch.pow(result_point_local[1], 2)
+							+ torch.pow(result_point_local[2], 2))
+		
+		dist = dist.to(dtype=result_scalar.dtype)
+		affine.cast_to(dtype=result_scalar.dtype)
+		result_point_local = [res.to(dtype=result_scalar.dtype) for res in result_point_local]
+		# ^^^ Float32 region
+
+		output_features.extend(result_point_local)
+		output_features.append(dist)
 		
 		result_attention_over_2d = torch.einsum('hij,ijc->ihc', attn, inputs_2d)
 		num_out = self.num_head * result_attention_over_2d.shape[-1]
