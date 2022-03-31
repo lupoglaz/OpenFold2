@@ -74,6 +74,8 @@ class InvariantPointAttention(nn.Module):
 		num_res = inputs_1d.size(0)
 		q_scalar = self.q_scalar(inputs_1d)
 		q_scalar = q_scalar.view(num_res, self.num_head, self.num_scalar_qk)
+		
+		affine.cast_to(dtype=torch.float32) #All affine operations to float32
 
 		kv_scalar = self.kv_scalar(inputs_1d)
 		kv_scalar = kv_scalar.view(num_res, self.num_head, self.num_scalar_v + self.num_scalar_qk)
@@ -81,12 +83,24 @@ class InvariantPointAttention(nn.Module):
 
 		q_point_local = self.q_point_local(inputs_1d)
 		q_point_local = q_point_local.split(self.num_head * self.num_point_qk, dim=-1)
+		
+		#Float32 region
+		q_point_local = [res.to(dtype=torch.float32) for res in q_point_local]
 		q_point_global = affine.apply_to_point(q_point_local, extra_dims=1)
+		q_point_global = [res.to(dtype=q_scalar.dtype) for res in q_point_global]
+		#Float32 region
+
 		q_point = [x.view(num_res, self.num_head, self.num_point_qk) for x in q_point_global]
 		
 		kv_point_local = self.kv_point_local(inputs_1d)
 		kv_point_local = kv_point_local.split(self.num_head * (self.num_point_qk + self.num_point_v), dim=-1)
+
+		#Float32 region
+		kv_point_local = [res.to(dtype=torch.float32) for res in kv_point_local]
 		kv_point_global = affine.apply_to_point(kv_point_local, extra_dims=1)
+		kv_point_global = [res.to(dtype=k_scalar.dtype) for res in kv_point_global]
+		#Float32 region
+
 		kv_point_global = [x.view(num_res, self.num_head, self.num_point_qk + self.num_point_v) for x in kv_point_global]
 		k_point, v_point = list(zip(*[(x[:,:,:self.num_point_qk], x[:,:,self.num_point_qk:]) for x in kv_point_global]))
 		
@@ -122,7 +136,7 @@ class InvariantPointAttention(nn.Module):
 		result_point_global = [r.reshape(num_res, self.num_head*self.num_point_v) for r in result_point_global]
 		
 		## VVV Float32 region (geometry region)
-		affine.cast_to(dtype=torch.float32)
+		# affine.cast_to(dtype=torch.float32)
 		result_point_global = [res.to(dtype=torch.float32) for res in result_point_global]
 		
 		result_point_local = affine.invert_point(result_point_global, extra_dims=1)
