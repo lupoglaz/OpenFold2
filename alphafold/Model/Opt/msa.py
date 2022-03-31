@@ -135,7 +135,7 @@ class AttentionOpt(nn.Module):
 		assert self.key_dim * self.num_head == q_data.size(-1)
 		assert self.value_dim * self.num_head == m_data.size(-1)
 		
-		q = self.q_weights(q_data) * (1./math.sqrt(self.key_dim))
+		q = self.q_weights(q_data) * 0.0#(1./math.sqrt(self.key_dim))
 		q = flat_head(q)
 
 		k = self.k_weights(m_data)
@@ -153,12 +153,19 @@ class AttentionOpt(nn.Module):
 			q = permute_final_dims(q, (1, 0, 2))
 			k = permute_final_dims(k, (1, 2, 0))
 			# print('Opt q:',q.size())
-			# print(q[0,0,0,:10])
+			# print(q[48,6,0,:10])
+			# return q
+			
+			# print('Opt k:',k.size())
+			# print(k[48,6,0,:10])
+			# print('Opt bias:',bias.size())
+			# print(bias[48,0,0,:10])
+			# return torch.matmul(q, k) * math.sqrt(self.key_dim)
 			logits = torch.matmul(q, k) + bias
 			del q, k
-
+			
 			# print('Opt logits:',logits.size())
-			# print((logits - bias)[0,0,0,:10])
+			# print(logits[48,6,0,:10])
 
 			if not(nonbatched_bias is None):
 				# print('Opt nonb bias:', nonbatched_bias.unsqueeze(dim=0).size())
@@ -167,9 +174,11 @@ class AttentionOpt(nn.Module):
 
 			weights = self.softmax(logits)
 			v = permute_final_dims(v, (1, 0, 2))
+			print('Opt weights:',weights.size())
+			print(weights[0,0,:4,:4])
+			return weights
 			# print('Opt bias:', bias.size())
-			# print('Opt weights:',weights.size())
-			# print(weights[0,0,0,:10])
+			
 			weighted_avg = torch.matmul(weights, v).transpose(-2, -3)
 
 		if self.config.gating:

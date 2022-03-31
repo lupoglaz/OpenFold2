@@ -38,7 +38,8 @@ class AttentionFF(nn.Module):
 		self.key_dim = all_key_dim // self.num_head
 		self.value_dim = all_value_dim // self.num_head
 
-		self.scaling = (1./math.sqrt(self.key_dim))
+		# self.scaling = (1./math.sqrt(self.key_dim))
+		self.scaling = 0.0
 
 		self.qkv_weights = Linear(all_key_dim, 3*all_key_dim, use_bias=False, initializer='glorot')
 		self.o_linear = Linear(all_value_dim, self.output_dim, initializer='final', use_bias=(not last_bias_fuse))
@@ -113,19 +114,28 @@ class AttentionFF(nn.Module):
 		q, k, v = map(lambda t: rearrange(t, 'b1 n (h d) -> b1 h n d', h=self.num_head), qkv)
 		
 		# print('FF q:',q.size())
-		# print(q[0,0,0,:10]*self.scaling)
+		# print(q[48,6,0,:10]*self.scaling)
+		# print('FF k:',k.transpose(-1,-2).size())
+		# print(k.transpose(-1,-2)[48,6,0,:10])
+		# print('FF bias:',mask.size())
+		# print(mask[48,:10])
+		
 
 		logits = torch.matmul(q, k.transpose(-1,-2))
 		# print('FF logits:', logits.size())
-		# print(logits[0,0,0,:10]*self.scaling)
-		
+		# print(logits[48,6,0,:10]*self.scaling)
+				
+		# return logits
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			weights = scale_mask_bias_softmax(logits, mask, nonbatched_bias.unsqueeze(1), self.scaling)
 		else:
 			weights = scale_mask_softmax(logits, mask, self.scaling)
 		
-		print('FF bias:', mask.size())
+		print('FF weights:',weights.size())
+		print(weights[0,0,:4,:4])
+		return weights
+		
 		weighted_avg = torch.matmul(weights, v)
 		weighted_avg = rearrange(weighted_avg, 'b1 h n d -> b1 n (h d)')
 
@@ -133,11 +143,11 @@ class AttentionFF(nn.Module):
 			gate_values = self.gating_linear(in_data)
 			weighted_avg = bias_sigmod_ele(gate_values, self.gating_bias, weighted_avg)
 		
-		print('FF weighted_avg:', weighted_avg.size())
-		print(weighted_avg[1,1,:10])
+		# print('FF weighted_avg:', weighted_avg.size())
+		# print(weighted_avg[1,1,:10])
 		output = self.o_linear(weighted_avg)
-		print('FF output:', output.size())
-		print(output[1,1,:10])
+		# print('FF output:', output.size())
+		# print(output[1,1,:10])
 		
 		return output
 
@@ -338,7 +348,7 @@ class MSAColumnAttentionFF(MSAColumnAttention):
 		assert self.config.orientation == 'per_column'
 		
 		msa_act = msa_act.transpose(-2, -3)
-		msa_mask = msa_mask.transpose(-1, -2)
+		msa_mask = msa_mask.transpose(-1, -2)#[:,None,None,:]
 		
 		msa_act = self.query_norm(msa_act)
 		
