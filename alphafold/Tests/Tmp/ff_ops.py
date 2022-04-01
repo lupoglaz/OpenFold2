@@ -1,31 +1,34 @@
 import torch
 from torch import nn
 from einops import rearrange
-from FastFold.Kernel import scale_mask_softmax, scale_mask_bias_softmax, bias_sigmod_ele
+from FastFold import Kernel#scale_mask_softmax, scale_mask_bias_softmax, bias_sigmod_ele
 
-if __name__=='__main__':
+def scale_mask_softmax():
 	softmax = nn.Softmax(dim=-1)
-	b1 = 2
+	b = 2
+	n = 3
 	h = 1
-	n = 128
-	d = 5
 	scaling = 1.0
 
-	logits = torch.ones(b1, d).cuda()
-	logits[0,:4] = 0
-	logits[1,:2] = 0
-	# print(logits)
-	mask = torch.ones(b1, d).cuda()
-	mask[0,:3] = 0
-	mask[1,:2] = 0
+	logits = torch.ones(b, h, n, n).cuda()
+	logits[0,:,0,0] = 0
+	logits[0,:,1,1] = 0
+	logits[1,:,0,0] = 0
+	logits[1,:,1,1] = 0
+	
+	mask = torch.ones(b, n).cuda()
+	mask[0,0] = 0
+	# mask[0,1] = 0
+	
 		
-	weights = scale_mask_softmax(logits, mask, scaling)
-
-	print(weights[0,:])
-
-
-	bias = (1e9 * (mask-1.0))#[:,None,None,:]
-	logits = logits + bias
+	ff_weights = Kernel.scale_mask_softmax(logits.unsqueeze(2), mask, scaling).squeeze(2)
+	
+	bias = (1e18 * (mask-1.0))[:,None,None,:]
+	logits = logits + bias#.unsqueeze(dim=-1).unsqueeze(dim=-2)
+	
 	# print(logits)
-	weights = softmax(logits)
-	print(weights[0,:])
+	n_weights = softmax(logits)
+	print(torch.abs(ff_weights - n_weights).sum())
+
+if __name__=='__main__':
+	scale_mask_softmax()

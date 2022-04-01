@@ -87,7 +87,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
 	attn_opt = MSARowAttentionWithPairBiasFF(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
-	attn_vanilla = MSARowAttentionWithPairBias(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
+	attn_vanilla = MSARowAttentionWithPairBiasOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
 	
 	attn_vanilla.cuda()
@@ -112,7 +112,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 			res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], feat['pair_act'], is_training=True)
 			profiler.step()
 		alloc_end_opt = get_total_alloc()
-		
+	
 	check_recursive(res_opt, res_vanilla)
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 
@@ -142,6 +142,10 @@ def MSAColumnAttentionTest(args, config, global_config):
 		res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], is_training=True)
 		profiler.step()
 	# reporter.report()
+	# mask = torch.isnan(res_opt)
+	# res_vanilla = res_vanilla[~mask]
+	# res_opt = res_opt[~mask]
+	# torch.where(, 0, res_opt)
 		
 	check_recursive(res_opt, res_vanilla)
 
@@ -187,6 +191,6 @@ if __name__=='__main__':
 
 	# AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
-	# MSARowAttentionWithPairBiasTest(args, config, global_config)
-	MSAColumnAttentionTest(args, config, global_config)
+	MSARowAttentionWithPairBiasTest(args, config, global_config)
+	# MSAColumnAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)

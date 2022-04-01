@@ -152,34 +152,20 @@ class AttentionOpt(nn.Module):
 		else:
 			q = permute_final_dims(q, (1, 0, 2))
 			k = permute_final_dims(k, (1, 2, 0))
-			# print('Opt q:',q.size())
-			# print(q[48,6,0,:10])
-			# return q
-			
-			# print('Opt k:',k.size())
-			# print(k[48,6,0,:10])
-			# print('Opt bias:',bias.size())
-			# print(bias[48,0,0,:10])
-			# return torch.matmul(q, k) * math.sqrt(self.key_dim)
 			logits = torch.matmul(q, k) + bias
 			del q, k
-			
-			# print('Opt logits:',logits.size())
-			# print(logits[48,6,0,:10])
-
+						
 			if not(nonbatched_bias is None):
-				# print('Opt nonb bias:', nonbatched_bias.unsqueeze(dim=0).size())
-				# print('Opt logits:', logits.size())
+				# print('Opt nonbbias:', nonbatched_bias.size())
 				logits += nonbatched_bias.unsqueeze(dim=0)
 
 			weights = self.softmax(logits)
+			# print('Opt weights:', weights.size())
+			# return weights
 			v = permute_final_dims(v, (1, 0, 2))
-			print('Opt weights:',weights.size())
-			print(weights[0,0,:4,:4])
-			return weights
-			# print('Opt bias:', bias.size())
 			
 			weighted_avg = torch.matmul(weights, v).transpose(-2, -3)
+			# print('Opt weighted_avg:', weighted_avg.size())
 
 		if self.config.gating:
 			gate_values = self.gating_linear(q_data)
@@ -188,11 +174,7 @@ class AttentionOpt(nn.Module):
 			weighted_avg *= gate_values
 
 		weighted_avg = flatten_final_dims(weighted_avg, 2)
-		# print('Opt weighted_avg:', weighted_avg.size())
-		# print(weighted_avg[1,1,:10])
 		output = self.o_linear(weighted_avg)
-		# print('Opt output:', output.size())
-		# print(output[1,1,:10])
 		
 		return output
 
@@ -386,19 +368,23 @@ class MSAColumnAttentionOpt(MSAColumnAttention):
 		assert msa_act.ndimension() == 3
 		assert msa_mask.ndimension() == 2
 		assert self.config.orientation == 'per_column'
-
+		
 		msa_act = msa_act.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
 		bias = (1e9 * (msa_mask.to(dtype=msa_act.dtype)-1.0))[:,None,None,:]
 		assert bias.ndimension() == 4
 
+		# print(msa_mask.size())
+		# print(bias.size())
+		# print(msa_act.size())
+		
 		msa_act = self.query_norm(msa_act)
 		# msa_act = self.attn(msa_act, msa_act, bias)
 		msa_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
 							batched_args=[msa_act, msa_act, bias],
 							nonbatched_args=[None],
 							low_memory=(not is_training))
-
+		
 		msa_act = msa_act.transpose(-2, -3)
 		return msa_act
 

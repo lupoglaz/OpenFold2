@@ -94,7 +94,8 @@ class EvoformerIteration(nn.Module):
 	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
 					is_training: bool=False) -> Mapping[str, torch.Tensor]:
 		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
-
+		# print(msa_mask.size())
+		# sys.exit()
 		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
 		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
 		msa_act = DO(self.msa_transition, msa_act, msa_mask)
