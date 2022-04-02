@@ -113,7 +113,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 			profiler.step()
 		alloc_end_opt = get_total_alloc()
 	
-	check_recursive(res_opt, res_vanilla)
+	check_recursive(res_opt, res_vanilla + feat['msa_act'])
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 
 def MSAColumnAttentionTest(args, config, global_config):
@@ -191,6 +191,6 @@ if __name__=='__main__':
 
 	# AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
-	MSARowAttentionWithPairBiasTest(args, config, global_config)
-	# MSAColumnAttentionTest(args, config, global_config)
+	# MSARowAttentionWithPairBiasTest(args, config, global_config)
+	MSAColumnAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)

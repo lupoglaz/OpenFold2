@@ -11,6 +11,7 @@ from alphafold.Model.Opt.msa import AttentionOpt
 from .mapping import inference_subbatch
 from einops import rearrange
 from FastFold.Kernel import scale_mask_softmax, scale_mask_bias_softmax, bias_sigmod_ele, bias_dropout_add
+from FastFold.Kernel import LayerNorm as LayerNormFF
 
 
 class AttentionFF(nn.Module):
@@ -141,13 +142,14 @@ class AttentionFF(nn.Module):
 class MSARowAttentionWithPairBiasFF(nn.Module):
 	"""
 	Optimized MSARowAttentionWithPairBias
+	Combines dropout, residual connection and MSARowAttentionWithPairBias
 	"""
 	def __init__(self, config, global_config, pair_dim:int, msa_dim:int) -> None:
 		super(MSARowAttentionWithPairBiasFF, self).__init__()
 		self.config = config
 		self.global_config = global_config
-		self.query_norm = nn.LayerNorm(msa_dim)
-		self.feat_2d_norm = nn.LayerNorm(pair_dim)
+		self.query_norm = LayerNormFF(msa_dim)
+		self.feat_2d_norm = LayerNormFF(pair_dim)
 		self.feat_2d_weights = Linear(pair_dim, config.num_head, use_bias=False, initializer='normal')
 		self.attn = AttentionFF(config, global_config, msa_dim, msa_dim, msa_dim, last_bias_fuse=True)
 		self.out_bias = nn.parameter.Parameter(torch.zeros(msa_dim))
@@ -192,10 +194,11 @@ class MSARowAttentionWithPairBiasFF(nn.Module):
 									nonbatched_args=[nonbatched_bias],
 									low_memory=(not is_training))
 		#!!! Bias dropout add
-		# msa_act = msa_act.unsqueeze(dim=1)
-		# msa_act_raw = msa_act_raw.unsqueeze(dim=1)
-		# dropout_mask = torch.ones_like(msa_act, device=msa_act.device, dtype=msa_act.dtype)
-		# return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=0.0, training=self.training).squeeze(dim=1)
+		msa_act = msa_act.unsqueeze(dim=1)
+		msa_act_raw = msa_act_raw.unsqueeze(dim=1)
+		dropout_mask = torch.ones_like(msa_act, device=msa_act.device, dtype=msa_act.dtype)
+		# Change prob and training
+		return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=1.0, training=False).squeeze(dim=1)
 		
 		return msa_act
 
@@ -207,7 +210,7 @@ class MSAColumnAttentionFF(MSAColumnAttention):
 		super(MSAColumnAttentionFF, self).__init__(config, global_config, msa_dim)
 		self.config = config
 		self.global_config = global_config
-		self.query_norm = nn.LayerNorm(msa_dim)
+		self.query_norm = LayerNormFF(msa_dim)
 		self.attn = AttentionFF(config, global_config, msa_dim, msa_dim, msa_dim)
 
 	def forward(self, msa_act:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
