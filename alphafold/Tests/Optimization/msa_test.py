@@ -24,7 +24,7 @@ def AttentionTest(args, config, global_config):
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
 	attn_opt = AttentionFF(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_opt.load_weights_from_af2(params['attention'], None)
-	attn_vanilla = AttentionOpt(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
+	attn_vanilla = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params['attention'], None)
 	
 	attn_vanilla.cuda()
@@ -191,6 +191,6 @@ if __name__=='__main__':
 
 	# AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
-	# MSARowAttentionWithPairBiasTest(args, config, global_config)
-	MSAColumnAttentionTest(args, config, global_config)
+	MSARowAttentionWithPairBiasTest(args, config, global_config)
+	# MSAColumnAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)

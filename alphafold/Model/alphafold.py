@@ -5,6 +5,8 @@ from alphafold.Model.msa import *
 from alphafold.Model.spatial import *
 from alphafold.Model.Opt.msa import *
 from alphafold.Model.Opt.spatial import *
+from alphafold.Model.Opt.fastfold_msa import *
+from alphafold.Model.Opt.fastfold_spatial import *
 
 from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
@@ -109,6 +111,59 @@ class EvoformerIteration(nn.Module):
 		# print('Pair act sum:', torch.sum(pair_act))
 		# print('MSA act sum:',torch.sum(msa_act))
 		return msa_act, pair_act
+
+class EvoformerIterationFF(nn.Module):
+	"""
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1561
+	"""
+	def __init__(self, config, global_config, msa_dim: int, pair_dim: int, is_extra_msa: bool) -> None:
+		super(EvoformerIterationFF, self).__init__()
+		self.config = config
+		self.global_config = global_config
+		self.is_extra_msa = is_extra_msa
+		
+		if is_extra_msa:
+			raise NotImplemented("Use EvoformerIteration for extra_msa")
+
+		self.msa_column_attention = MSAColumnAttentionFF(config.msa_column_attention, global_config, msa_dim)
+		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBiasFF(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)		
+		self.msa_transition = TransitionFF(config.msa_transition, global_config, msa_dim)
+		self.outer_product_mean = OuterProductMeanFF(config.outer_product_mean, global_config, pair_dim, msa_dim)
+		self.triangle_multiplication_outgoing = TriangleMultiplicationFF(config.triangle_multiplication_outgoing, global_config, pair_dim)
+		self.triangle_multiplication_incoming = TriangleMultiplicationFF(config.triangle_multiplication_incoming, global_config, pair_dim)
+		self.triangle_attention_starting_node = TriangleAttentionFF(config.triangle_attention_starting_node, global_config, pair_dim)
+		self.triangle_attention_ending_node = TriangleAttentionFF(config.triangle_attention_ending_node, global_config, pair_dim)
+		self.pair_transition = TransitionFF(config.pair_transition, global_config, pair_dim)
+
+	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
+		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias', ind=ind)
+		self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention', ind=ind)
+		self.msa_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_transition', ind=ind)
+		self.outer_product_mean.load_weights_from_af2(data, rel_path=f'{rel_path}/outer_product_mean', ind=ind)
+		self.triangle_multiplication_outgoing.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_outgoing', ind=ind)
+		self.triangle_multiplication_incoming.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_incoming', ind=ind)
+		self.triangle_attention_starting_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_starting_node', ind=ind)
+		self.triangle_attention_ending_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_ending_node', ind=ind)
+		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition', ind=ind)
+
+	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
+					is_training: bool=False) -> Mapping[str, torch.Tensor]:
+		
+		#MSA stack
+		msa_act = self.msa_row_attention_with_pair_bias(msa_act, msa_mask, pair_act=pair_act, is_training=is_training)
+		msa_act = self.msa_column_attention(msa_act, msa_mask, is_training=is_training)
+		#MSA - > MSA
+		msa_act = self.msa_transition(msa_act, msa_mask, is_training=is_training)
+		#MSA - > pair
+		pair_act = pair_act + self.outer_product_mean(msa_act, msa_mask, is_training=is_training)
+		#Pair stack
+		pair_act = self.triangle_multiplication_outgoing(pair_act, pair_mask, is_training=is_training)
+		pair_act = self.triangle_multiplication_incoming(pair_act, pair_mask, is_training=is_training)
+		pair_act = self.triangle_attention_starting_node(pair_act, pair_mask, is_training=is_training)
+		pair_act = self.triangle_attention_ending_node(pair_act, pair_mask, is_training=is_training)
+		#Pair - > Pair
+		pair_act = self.pair_transition(pair_act, pair_mask, is_training=is_training)
+		return msa_act, pair_act
 		
 class EmbeddingsAndEvoformer(nn.Module):
 	"""
@@ -132,7 +187,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 															is_extra_msa=True))
 		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIteration(	config.evoformer, global_config, 
+			self.evoformer_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=False))

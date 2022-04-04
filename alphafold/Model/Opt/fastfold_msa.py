@@ -189,16 +189,17 @@ class MSARowAttentionWithPairBiasFF(nn.Module):
 		msa_act = self.query_norm(msa_act_raw)
 		pair_act = self.feat_2d_norm(pair_act)
 		nonbatched_bias = self.feat_2d_weights(pair_act).unsqueeze(0)
+		
 		msa_act = inference_subbatch(self.attn, self.global_config.subbatch_size, 
 									batched_args=[msa_act, msa_mask],
 									nonbatched_args=[nonbatched_bias],
 									low_memory=(not is_training))
 		#!!! Bias dropout add
-		msa_act = msa_act.unsqueeze(dim=1)
-		msa_act_raw = msa_act_raw.unsqueeze(dim=1)
+		# msa_act = msa_act.unsqueeze(dim=1)
+		# msa_act_raw = msa_act_raw.unsqueeze(dim=1)
 		dropout_mask = torch.ones_like(msa_act, device=msa_act.device, dtype=msa_act.dtype)
 		# Change prob and training
-		return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=1.0, training=False).squeeze(dim=1)
+		return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=self.config.dropout_rate, training=is_training)#.squeeze(dim=1)
 		
 		return msa_act
 
@@ -213,12 +214,12 @@ class MSAColumnAttentionFF(MSAColumnAttention):
 		self.query_norm = LayerNormFF(msa_dim)
 		self.attn = AttentionFF(config, global_config, msa_dim, msa_dim, msa_dim)
 
-	def forward(self, msa_act:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
-		assert msa_act.ndimension() == 3
+	def forward(self, msa_act_raw:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
+		assert msa_act_raw.ndimension() == 3
 		assert msa_mask.ndimension() == 2
 		assert self.config.orientation == 'per_column'
 		
-		msa_act = msa_act.transpose(-2, -3)
+		msa_act = msa_act_raw.transpose(-2, -3)
 		msa_mask = msa_mask.transpose(-1, -2)
 		
 		msa_act = self.query_norm(msa_act)
@@ -229,5 +230,5 @@ class MSAColumnAttentionFF(MSAColumnAttention):
 							low_memory=(not is_training))
 
 		msa_act = msa_act.transpose(-2, -3)
-		return msa_act
+		return msa_act + msa_act_raw
 

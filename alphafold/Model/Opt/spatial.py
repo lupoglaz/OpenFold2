@@ -65,7 +65,7 @@ class TriangleAttentionOpt(nn.Module):
 							batched_args=[pair_act, pair_act, bias],
 							nonbatched_args=[nonbatched_bias],
 							low_memory=(not is_training))
-
+		
 		if self.config.orientation == 'per_column':
 			pair_act = pair_act.transpose(-2, -3)
 		
