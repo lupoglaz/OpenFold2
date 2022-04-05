@@ -271,11 +271,10 @@ class AlphaFoldIteration(nn.Module):
 	"""
 	HIGH = 1
 	LOW = 2
-	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int):
 		super().__init__()
 		self.config = config
 		self.global_config = global_config
-		self.compute_loss = compute_loss
 
 		self.evoformer_module = EmbeddingsAndEvoformer(	config.embeddings_and_evoformer, global_config, 
 														target_dim=target_dim,
@@ -313,8 +312,7 @@ class AlphaFoldIteration(nn.Module):
 		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer')
 
 	def forward(self, ensembled_batch, non_ensembled_batch, 
-				is_training:bool=False, ensemble_representations:bool=False, 
-				compute_loss:bool=False):
+				is_training:bool=False, ensemble_representations:bool=False, compute_loss:bool=False):
 		
 		num_ensemble = torch.Tensor([ensembled_batch['seq_length'].size(0)])
 		if not ensemble_representations:
@@ -355,28 +353,24 @@ class AlphaFoldIteration(nn.Module):
 				else:
 					total_loss += loss(head, head_config, ret, name, filter_ret=True)
 		
-		if compute_loss:
-			return ret, total_loss
-		else:
-			return ret
+		return ret, total_loss
 			
 
 class AlphaFold(nn.Module):
-	def __init__(self, config, target_dim:int, msa_dim:int, extra_msa_dim:int, compute_loss:bool=False):
+	def __init__(self, config, target_dim:int, msa_dim:int, extra_msa_dim:int):
 		super().__init__()
 		self.config = config
 		self.global_config = config.global_config
 		self.impl = AlphaFoldIteration(	self.config, self.global_config,
 										target_dim=target_dim, 
 										msa_dim=msa_dim, 
-										extra_msa_dim=extra_msa_dim,
-										compute_loss=compute_loss)
+										extra_msa_dim=extra_msa_dim)
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold', ind:int=None):
 		self.impl.load_weights_from_af2(data, rel_path=f'{rel_path}/alphafold_iteration')
 
 	def forward(self, batch, 
-				is_training:bool=False, compute_loss:bool=False, 
+				is_training:bool=False, compute_loss:bool=True,
 				ensemble_representations:bool=False, 
 				iter_num_recycling:torch.Tensor=None):
 
@@ -387,7 +381,7 @@ class AlphaFold(nn.Module):
 					'prev_msa_first_row': ret['representations']['msa_first_row'].detach(),
 					'prev_pair': ret['representations']['pair'].detach()}
 
-		def do_call(prev, recycle_idx, compute_loss:bool=False, is_training:bool=False):
+		def do_call(prev, recycle_idx, is_training:bool=False, compute_loss:bool=False):
 			if self.config.resample_msa_in_recycling:
 				num_ensemble = batch_size // (self.config.num_recycle + 1)
 				def slice_recycle_idx(x):
@@ -423,8 +417,8 @@ class AlphaFold(nn.Module):
 		else:
 			prev = {}
 			num_iter = 0
-
-		ret, total_loss = do_call(prev=prev, recycle_idx=num_iter, compute_loss=True, is_training=is_training)
+		
+		ret, total_loss = do_call(prev=prev, recycle_idx=num_iter, compute_loss=compute_loss, is_training=is_training)
 		return ret, total_loss
 				
 

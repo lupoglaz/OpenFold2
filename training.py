@@ -57,7 +57,7 @@ class AlphaFoldModule(pl.LightningModule):
 	def __init__(self, config):
 		super().__init__()
 		self.af2features = AlphaFoldFeatures(config=config, device=None, is_training=True)
-		self.af2 = AlphaFold(config=config.model, target_dim=22, msa_dim=49, extra_msa_dim=25, compute_loss=True)
+		self.af2 = AlphaFold(config=config.model, target_dim=22, msa_dim=49, extra_msa_dim=25)
 		self.iter = 0
 		self.ema = ExponentialMovingAverage(self.af2, 0.999)
 		
@@ -109,8 +109,14 @@ class AlphaFoldModule(pl.LightningModule):
 		num_recycle = self.trainer.accelerator.broadcast(num_recycle, src=0)
 		
 		batch = self.af2features(feature_dict, random_seed=42)
-		batch = self.af2features.convert(batch)
-		ret, total_loss = self.af2(batch, is_training=True, iter_num_recycling=num_recycle)
+		if self.dtype == torch.float16:
+			batch = self.af2features.convert(batch, dtypes={torch.float32: torch.float16,
+															torch.float64: torch.float32})
+		else:
+			batch = self.af2features.convert(batch, dtypes={torch.float32: torch.float32,
+															torch.float64: torch.float32})
+			
+		ret, total_loss = self.af2(batch, is_training=True, iter_num_recycling=num_recycle, compute_loss=True)
 		self.logging(ret)
 		self.iter += 1
 		
@@ -218,7 +224,7 @@ if __name__=='__main__':
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm',
-							precision=args.precision, 
+							precision=args.precision,
 							amp_backend="native",
 							# amp_backend="apex",
 							# amp_level='O3',
@@ -226,7 +232,7 @@ if __name__=='__main__':
 							# callbacks = [
 							# 	PerformanceLoggingCallback(Path('perf.json'), args.num_gpus*args.num_nodes)
 							# ],
-							#resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_0')/Path("checkpoints/epoch=4-step=4684.ckpt")
+							# resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_8')/Path("checkpoints/latest")
  						)
 	trainer.fit(model, data)
 	if not(args.log_dir is None):

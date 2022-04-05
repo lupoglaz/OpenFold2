@@ -111,11 +111,7 @@ if __name__ == '__main__':
 		print(key, batch[key].shape)
 		batch[key] = batch[key][0].unsqueeze(dim=0).to(device='cuda')
 	
-	af2 = AlphaFold(config=model_config,
-					num_res=batch['target_feat'].shape[-2],
-					target_dim=batch['target_feat'].shape[-1], 
-					msa_dim=batch['msa_feat'].shape[-1],
-					extra_msa_dim=25)
+	af2 = AlphaFold(config=model_config, target_dim=22, msa_dim=49, extra_msa_dim=25)
 	
 	path = os.path.join(args.data_dir, 'params', f'params_{args.model_name}.npz')
 	with open(path, 'rb') as f:
@@ -125,7 +121,7 @@ if __name__ == '__main__':
 	af2 = af2.cuda()
 	
 	with torch.no_grad():
-		prediction_result, _ = af2(batch, is_training=False)
+		prediction_result, _ = af2(batch, is_training=False, compute_loss=False)
 		with open(output_dir / Path('result.pkl'), 'wb') as f:
 			pickle.dump(prediction_result, f, protocol=4)
 		# with open('result.pkl', 'rb') as f:
