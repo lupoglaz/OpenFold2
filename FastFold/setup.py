@@ -111,13 +111,13 @@ else:
 
 
 
-    cc_flag = ['-gencode', 'arch=compute_61,code=sm_61']
+    cc_flag = ['-gencode', 'arch=compute_70,code=sm_70']
     _, bare_metal_major, _ = get_cuda_bare_metal_version(CUDA_HOME)
     if int(bare_metal_major) >= 11:
         cc_flag.append('-gencode')
-        cc_flag.append('arch=compute_70,code=sm_70')
-        cc_flag.append('-gencode')
-        cc_flag.append('arch=compute_80,code=sm_80')
+        cc_flag.append('arch=compute_72,code=sm_72')
+        # cc_flag.append('-gencode')
+        # cc_flag.append('arch=compute_80,code=sm_80')
 		
 
     extra_cuda_flags = [

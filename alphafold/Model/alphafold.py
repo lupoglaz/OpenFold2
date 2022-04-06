@@ -413,7 +413,8 @@ class AlphaFold(nn.Module):
 
 			for i in range(num_iter):
 				with torch.no_grad():
-					prev = get_prev(do_call(prev, recycle_idx=i, compute_loss=False, is_training=is_training))
+					ret, _ = do_call(prev, recycle_idx=i, compute_loss=False, is_training=is_training)
+					prev = get_prev(ret)
 		else:
 			prev = {}
 			num_iter = 0
