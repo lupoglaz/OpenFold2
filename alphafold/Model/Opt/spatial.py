@@ -217,7 +217,7 @@ class OuterProductMeanOpt(nn.Module):
 		self.output_w.bias.data.copy_(torch.from_numpy(d))
 	
 	def forward(self, msa_act: torch.Tensor, msa_mask: torch.Tensor, is_training: bool=False) -> torch.Tensor:
-		msa_mask = msa_mask[..., None]
+		msa_mask = msa_mask[..., None].to(dtype=msa_act.dtype)
 		msa_act = self.layer_norm_input(msa_act)
 		left_act = msa_mask * self.left_projection(msa_act)
 		right_act = msa_mask * self.right_projection(msa_act)
@@ -237,7 +237,7 @@ class OuterProductMeanOpt(nn.Module):
 								input_subbatch_dim=0, output_subbatch_dims=[0,1])
 				
 		eps = 1e-3
-		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)
+		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)#>=1
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
 		return act
 

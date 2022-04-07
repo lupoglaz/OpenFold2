@@ -24,7 +24,7 @@ def AttentionTest(args, config, global_config):
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
 	attn_opt = AttentionFF(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_opt.load_weights_from_af2(params['attention'], None)
-	attn_vanilla = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
+	attn_vanilla = AttentionOpt(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params['attention'], None)
 	
 	attn_vanilla.cuda()
@@ -32,16 +32,29 @@ def AttentionTest(args, config, global_config):
 	feat['m_data'] = feat['m_data'].to(device='cuda', dtype=torch.float32)
 	feat['bias'] = feat['bias'].to(device='cuda', dtype=torch.float32)
 	feat['nonbatched_bias'] = feat['nonbatched_bias'].to(device='cuda')
+
+	mask = (feat['bias']>=0).float()#.fill_(1.0)
+	# mask[:,0,:] = 1
+	# mask[:,:,0] = 1
+	bias = (1e9*(mask - 1.0))#[None,:,:,None]
+	# print(mask[0,:,:])
+	# print(bias[0,:,:])
+
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('Attention'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_vanilla = attn_vanilla(q_data=feat['q_data'], m_data=feat['q_data'], bias=feat['bias'].zero_(), nonbatched_bias=feat['nonbatched_bias'])
+		# res_vanilla = attn_vanilla(q_data=feat['q_data'], m_data=feat['q_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])
+		res_vanilla = attn_vanilla(q_data=feat['q_data'], m_data=feat['q_data'], bias=bias, nonbatched_bias=None)
 		profiler.step()
 	
 	attn_opt.cuda()
 	reporter = MemReporter()
 	handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('AttentionOpt'))
 	with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		res_opt = attn_opt(in_data=feat['q_data'], mask=feat['bias'].fill_(1.0), nonbatched_bias=feat['nonbatched_bias'][None,:,:,None])
+		if isinstance(attn_opt, AttentionFF):
+			# res_opt = attn_opt(in_data=feat['q_data'], mask=feat['bias'], nonbatched_bias=feat['nonbatched_bias'][None,:,:,None])
+			res_opt = attn_opt(in_data=feat['q_data'], mask=mask.squeeze(), nonbatched_bias=None)
+		else:
+			res_opt = attn_opt(q_data=feat['q_data'], m_data=feat['q_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])
 		profiler.step()
 	# reporter.report()
 		
@@ -85,9 +98,9 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 			print('\t' + param)
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
-	attn_opt = MSARowAttentionWithPairBiasFF(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
+	attn_opt = MSARowAttentionWithPairBiasOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
-	attn_vanilla = MSARowAttentionWithPairBiasOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
+	attn_vanilla = MSARowAttentionWithPairBias(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_row_attention_with_pair_bias')
 	
 	attn_vanilla.cuda()
@@ -112,17 +125,19 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config):
 			res_opt = attn_opt(feat['msa_act'], feat['msa_mask'], feat['pair_act'], is_training=True)
 			profiler.step()
 		alloc_end_opt = get_total_alloc()
-	
-	check_recursive(res_opt, res_vanilla + feat['msa_act'])
+	if isinstance(attn_opt, MSARowAttentionWithPairBiasFF):
+		check_recursive(res_opt, res_vanilla + feat['msa_act'])
+	else:
+		check_recursive(res_opt, res_vanilla)
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 
 def MSAColumnAttentionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'MSAColumnAttention')
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_column_attention
-	attn_opt = MSAColumnAttentionFF(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
+	attn_opt = MSAColumnAttentionOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, rel_path='msa_column_attention')
-	attn_vanilla = MSAColumnAttentionOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
+	attn_vanilla = MSAColumnAttention(conf, global_config, msa_dim=feat['msa_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, rel_path='msa_column_attention')
 	
 	attn_vanilla.cuda()
@@ -189,8 +204,8 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	# AttentionTest(args, config, global_config)
+	AttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
-	MSARowAttentionWithPairBiasTest(args, config, global_config)
+	# MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)

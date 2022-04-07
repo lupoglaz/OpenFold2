@@ -14,6 +14,8 @@
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
+// #define INF = 1e-8
+
 __inline__ __device__ float WarpAllReduceMax(float val) {
     for (int mask = 1; mask < 32; mask *= 2) {
         val = max(val, __shfl_xor_sync(0xffffffff, val, mask));
@@ -585,6 +587,7 @@ at::Tensor fused_scale_mask_softmax_forward(at::Tensor input, at::Tensor mask, i
     const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
     int head = input.sizes()[2];
     at::Tensor output = at::empty_like(input);
+	printf("OLOLO %d", head);
 
     int grid = (rows + 3) / 4;
     dim3 block(128);

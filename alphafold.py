@@ -25,8 +25,8 @@ from alphafold.Data import pipeline
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-fasta_path', default='1wmg_1_a.fas', type=str)
-	parser.add_argument('-feature_path', default='/media/lupoglaz/AlphaFold2Dataset/Features/1wmg_1_a_features.pkl', type=str)
+	parser.add_argument('-fasta_path', default='T1024.fas', type=str)
+	parser.add_argument('-feature_path', default='/media/lupoglaz/OpenFold2Output/T1024/features.pkl', type=str)
 	parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
 	# parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
 	parser.add_argument('-model_name', default='model_1', type=str)

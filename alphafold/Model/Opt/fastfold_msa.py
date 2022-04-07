@@ -39,8 +39,8 @@ class AttentionFF(nn.Module):
 		self.key_dim = all_key_dim // self.num_head
 		self.value_dim = all_value_dim // self.num_head
 
-		# self.scaling = (1./math.sqrt(self.key_dim))
-		self.scaling = 0.0
+		self.scaling = (1./math.sqrt(self.key_dim))
+		# self.scaling = 0.0
 
 		self.qkv_weights = Linear(all_key_dim, 3*all_key_dim, use_bias=False, initializer='glorot')
 		self.o_linear = Linear(all_value_dim, self.output_dim, initializer='final', use_bias=(not last_bias_fuse))
@@ -115,7 +115,9 @@ class AttentionFF(nn.Module):
 		q, k, v = map(lambda t: rearrange(t, 'b1 n (h d) -> b1 h n d', h=self.num_head), qkv)
 
 		logits = torch.matmul(q, k.transpose(-1,-2))
-		
+		# print('FF',q.size(), k.transpose(-1,-2).size())
+		# return logits*self.scaling
+		# return k.transpose(-2,-3)
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			# print('FF nonbbias:', nonbatched_bias.size())
@@ -125,7 +127,13 @@ class AttentionFF(nn.Module):
 			# return weights
 		else:
 			#head should be 3rd dimension
+			print(logits.size(), mask.size())
+			print(mask[0,0,:])
 			weights = scale_mask_softmax(logits.unsqueeze(1), mask, self.scaling).squeeze(1)
+			# weights = scale_mask_softmax(logits, mask, self.scaling)
+			print(weights.size())
+			print(weights[0,0,2,:])
+			return weights
 		
 		weighted_avg = torch.matmul(weights, v)
 		# print('FF weighted_avg:', weighted_avg.size())

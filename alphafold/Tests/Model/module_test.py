@@ -137,11 +137,11 @@ def EvoformerIterationTest1(args, config, global_config):
 	
 	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
 	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
-
-	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
-	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
 	
-	this_res = attn(activations, masks, is_training=False)
+	this_res = attn(msa_act=feat['msa_act'], pair_act=feat['pair_act'], msa_mask=feat['msa_mask'].float(), pair_mask=feat['pair_mask'].float(), 
+					is_training=False)
+	this_res = {'msa':this_res[0],
+				'pair':this_res[1]}
 	check_recursive(this_res, res)
 	
 
@@ -156,7 +156,11 @@ def EvoformerIterationTest2(args, config, global_config):
 	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
 	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
 	
-	this_res = attn(activations, masks, is_training=False)
+	this_res = attn(msa_act=feat['msa_act'], pair_act=feat['pair_act'], msa_mask=feat['msa_mask'].float(), pair_mask=feat['pair_mask'].float(), 
+					is_training=False)
+	this_res = {'msa':this_res[0],
+				'pair':this_res[1]}
+
 	check_recursive(this_res, res)
 
 def EmbeddingsAndEvoformerTest(args, config, global_config, cuda:bool=False):
@@ -222,13 +226,13 @@ if __name__=='__main__':
 	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationIncomingTest(args, config, global_config)
 	# TriangleMultiplicationOutgoingTest(args, config, global_config)
-	# OuterProductMeanTest(args, config, global_config)
+	OuterProductMeanTest(args, config, global_config)
 	# TransitionTest(args, config, global_config)
 	# EvoformerIterationTest1(args, config, global_config)
 	# EvoformerIterationTest2(args, config, global_config)
 	
-	with torch.no_grad():
-		EmbeddingsAndEvoformerTest(args, config, global_config)
+	# with torch.no_grad():
+	# 	EmbeddingsAndEvoformerTest(args, config, global_config)
 	
 	
 

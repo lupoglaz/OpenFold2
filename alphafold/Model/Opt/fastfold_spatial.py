@@ -279,7 +279,7 @@ class OuterProductMeanFF(nn.Module):
 								input_subbatch_dim=0, output_subbatch_dims=[0,1])
 				
 		eps = 1e-3
-		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)
+		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)>=1
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
 		return act
 

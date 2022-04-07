@@ -64,6 +64,64 @@ class EvoformerIteration(nn.Module):
 		self.global_config = global_config
 		self.is_extra_msa = is_extra_msa
 
+		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBias(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)
+		
+		if not is_extra_msa:
+			self.msa_column_attention = MSAColumnAttention(config.msa_column_attention, global_config, msa_dim)
+		else:
+			self.msa_column_attention = MSAColumnGlobalAttention(config.msa_column_attention, global_config, msa_dim)
+
+		self.msa_transition = Transition(config.msa_transition, global_config, msa_dim)
+		self.outer_product_mean = OuterProductMean(config.outer_product_mean, global_config, pair_dim, msa_dim)
+		self.triangle_multiplication_outgoing = TriangleMultiplication(config.triangle_multiplication_outgoing, global_config, pair_dim)
+		self.triangle_multiplication_incoming = TriangleMultiplication(config.triangle_multiplication_incoming, global_config, pair_dim)
+		self.triangle_attention_starting_node = TriangleAttention(config.triangle_attention_starting_node, global_config, pair_dim)
+		self.triangle_attention_ending_node = TriangleAttention(config.triangle_attention_ending_node, global_config, pair_dim)
+		self.pair_transition = Transition(config.pair_transition, global_config, pair_dim)
+
+	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
+		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias', ind=ind)
+		if not self.is_extra_msa:
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention', ind=ind)
+		else:
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_global_attention', ind=ind)
+		self.msa_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_transition', ind=ind)
+		self.outer_product_mean.load_weights_from_af2(data, rel_path=f'{rel_path}/outer_product_mean', ind=ind)
+		self.triangle_multiplication_outgoing.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_outgoing', ind=ind)
+		self.triangle_multiplication_incoming.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_incoming', ind=ind)
+		self.triangle_attention_starting_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_starting_node', ind=ind)
+		self.triangle_attention_ending_node.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_attention_ending_node', ind=ind)
+		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition', ind=ind)
+
+	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
+					is_training: bool=False) -> Mapping[str, torch.Tensor]:
+		DO = functools.partial(dropout_wrapper, is_training=is_training, global_config=self.global_config)
+		# print(msa_mask.size())
+		# sys.exit()
+		msa_act = DO(self.msa_row_attention_with_pair_bias, msa_act, msa_mask, pair_act=pair_act)
+		msa_act = DO(self.msa_column_attention, msa_act, msa_mask)
+		msa_act = DO(self.msa_transition, msa_act, msa_mask)
+		pair_act = DO(self.outer_product_mean, msa_act, msa_mask, output_act=pair_act)
+		pair_act = DO(self.triangle_multiplication_outgoing, pair_act, pair_mask)
+		pair_act = DO(self.triangle_multiplication_incoming, pair_act, pair_mask)
+		pair_act = DO(self.triangle_attention_starting_node, pair_act, pair_mask)
+		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask)
+		pair_act = DO(self.pair_transition, pair_act, pair_mask)
+		
+		# print('Pair act sum:', torch.sum(pair_act))
+		# print('MSA act sum:',torch.sum(msa_act))
+		return msa_act, pair_act
+
+class EvoformerIterationOpt(nn.Module):
+	"""
+	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1561
+	"""
+	def __init__(self, config, global_config, msa_dim: int, pair_dim: int, is_extra_msa: bool) -> None:
+		super(EvoformerIterationOpt, self).__init__()
+		self.config = config
+		self.global_config = global_config
+		self.is_extra_msa = is_extra_msa
+
 		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBiasOpt(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)
 		
 		if not is_extra_msa:
@@ -181,13 +239,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
 		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
-			self.extra_msa_stack.append(EvoformerIteration(	config.evoformer, global_config, 
+			self.extra_msa_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=True))
 		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
+			self.evoformer_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=False))
