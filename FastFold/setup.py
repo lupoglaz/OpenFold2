@@ -8,9 +8,30 @@ import subprocess
 import torch
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
+import xml.etree.ElementTree as ET
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
+
+def get_gpu_info():
+    raw_output = subprocess.check_output(["nvidia-smi", "-q", "-x"], universal_newlines=True)
+    xml = ET.fromstring(raw_output)
+    datas = []
+    driver_version = xml.findall("driver_version")[0].text
+    cuda_version = xml.findall("cuda_version")[0].text
+
+    for gpu_id, gpu in enumerate(xml.iter("gpu")):
+        gpu_data = {}
+        name = [x for x in gpu.iter("product_name")][0].text
+        memory_usage = gpu.findall("fb_memory_usage")[0]
+        total_memory = memory_usage.findall("total")[0].text
+
+        gpu_data["name"] = name
+        gpu_data["total_memory"] = total_memory
+        gpu_data["driver_version"] = driver_version
+        gpu_data["cuda_version"] = cuda_version
+        datas.append(gpu_data)
+    return datas
 
 
 def get_cuda_bare_metal_version(cuda_dir):
@@ -109,10 +130,18 @@ else:
                                         extra_cuda_flags)
             })
 
+    gpu_info = get_gpu_info()
+    gen_61 = False
+    for gpu in gpu_info:
+        if gpu['name'] == 'NVIDIA GeForce GTX 1080':
+           gen_61 = True
+    if gen_61:
+        print('Generating code for 1080\'s')
+        cc_flag = ['-gencode', 'arch=compute_61,code=sm_61']
+    else:
+        print('Generating code for V100\'s')
+        cc_flag = ['-gencode', 'arch=compute_70,code=sm_70']
 
-
-    # cc_flag = ['-gencode', 'arch=compute_61,code=sm_61']
-    cc_flag = ['-gencode', 'arch=compute_70,code=sm_70']
     _, bare_metal_major, _ = get_cuda_bare_metal_version(CUDA_HOME)
     if int(bare_metal_major) >= 11:
         cc_flag.append('-gencode')

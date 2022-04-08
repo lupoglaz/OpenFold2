@@ -120,9 +120,6 @@ class AlphaFoldModule(pl.LightningModule):
 		self.logging(ret)
 		self.iter += 1
 		
-		if(torch.isnan(total_loss) or torch.isinf(total_loss)):
-			total_loss = None
-
 		return total_loss
 
 	def configure_optimizers(self):
