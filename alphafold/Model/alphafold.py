@@ -408,9 +408,13 @@ class AlphaFoldIteration(nn.Module):
 				representations.update(ret[name].pop('representations'))
 			if compute_loss:
 				if name in ('predicted_aligned_error', 'predicted_lddt'):
-					total_loss += loss(head, head_config, ret, name, filter_ret=False)
+					current_loss = loss(head, head_config, ret, name, filter_ret=False)
 				else:
-					total_loss += loss(head, head_config, ret, name, filter_ret=True)
+					current_loss = loss(head, head_config, ret, name, filter_ret=True)
+				if(torch.isnan(current_loss) or torch.isinf(current_loss)):
+					print(f"{name} loss is NaN. Skipping...")
+					current_loss = current_loss.new_tensor(0., requires_grad=True)
+				total_loss += current_loss
 		
 		return ret, total_loss
 			
