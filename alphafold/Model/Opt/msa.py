@@ -158,14 +158,15 @@ class AttentionOpt(nn.Module):
 			del q, k
 			
 			if not(nonbatched_bias is None):
-				# print('Opt nonbbias:', nonbatched_bias.size())
+				# print('Opt nonbbias:', nonbatched_bias.size(), bias.size())
 				logits += nonbatched_bias.unsqueeze(dim=0)
 			# print('Opt', logits.size(), bias.size())
 			weights = self.softmax(logits)
-			print(bias[0,0,2,:])
-			print('Opt:',weights[0,0,2,:])
+			# print(bias.size(), weights.size())
+			# print('Opt:',nonbatched_bias[0,2,:])
+			# print('Opt:',weights[0,0,2,:])
 			# print('Opt weights:', weights.sum())
-			return weights
+			# return weights
 			v = permute_final_dims(v, (1, 0, 2))
 			
 			weighted_avg = torch.matmul(weights, v).transpose(-2, -3)

@@ -13,15 +13,15 @@ def TriangleAttentionTest(args, config, global_config):
 		
 	# conf = config.model.embeddings_and_evoformer.evoformer.triangle_attention_starting_node
 	conf = config.model.embeddings_and_evoformer.evoformer.triangle_attention_ending_node
-	attn_opt = TriangleAttentionOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	attn_opt = TriangleAttentionFF(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, 'triangle_attention')
-	attn_vanilla = TriangleAttention(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	attn_vanilla = TriangleAttentionOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, 'triangle_attention')
 	
 	attn_vanilla.cuda()
 	feat['pair_act'] = feat['pair_act'].to(device='cuda', dtype=torch.float32)
 	feat['pair_mask'] = feat['pair_mask'].to(device='cuda', dtype=torch.float32)
-	
+		
 	alloc_start_vanilla = get_total_alloc()
 	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('TriangleAttention'))
 	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
@@ -38,10 +38,7 @@ def TriangleAttentionTest(args, config, global_config):
 	alloc_end_opt = get_total_alloc()
 	
 	if isinstance(attn_opt, TriangleAttentionFF):
-		if conf == config.model.embeddings_and_evoformer.evoformer.triangle_attention_ending_node:
-			check_recursive(res_opt, res_vanilla + feat['pair_act'].transpose(-2, -3))
-		else:
-			check_recursive(res_opt, res_vanilla + feat['pair_act'])
+		check_recursive(res_opt, res_vanilla + feat['pair_act'])
 	else:
 		check_recursive(res_opt, res_vanilla)
 	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
@@ -52,9 +49,9 @@ def TriangleMultiplicationTest(args, config, global_config):
 		
 	# conf = config.model.embeddings_and_evoformer.evoformer.triangle_multiplication_outgoing
 	conf = config.model.embeddings_and_evoformer.evoformer.triangle_multiplication_incoming
-	attn_opt = TriangleMultiplicationOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	attn_opt = TriangleMultiplicationFF(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, 'triangle_multiplication')
-	attn_vanilla = TriangleMultiplication(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	attn_vanilla = TriangleMultiplicationOpt(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, 'triangle_multiplication')
 	
 
@@ -87,9 +84,9 @@ def OuterProductMeanTest(args, config, global_config):
 	feat, params, res = load_data(args, 'OuterProductMean')
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.outer_product_mean
-	attn_opt = OuterProductMeanOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
+	attn_opt = OuterProductMeanFF(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
 	attn_opt.load_weights_from_af2(params, 'outer_product_mean')
-	attn_vanilla = OuterProductMean(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
+	attn_vanilla = OuterProductMeanOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
 	attn_vanilla.load_weights_from_af2(params, 'outer_product_mean')
 	
 	attn_vanilla.cuda()
@@ -121,9 +118,9 @@ def TransitionTest(args, config, global_config):
 
 	conf = config.model.embeddings_and_evoformer.evoformer.pair_transition
 	global_config.subbatch_size = 2
-	attn_opt = TransitionOpt(conf, global_config, num_channel=feat['seq_act'].shape[-1])
+	attn_opt = TransitionFF(conf, global_config, num_channel=feat['seq_act'].shape[-1])
 	attn_opt.load_weights_from_af2(params, 'transition_block')
-	attn_vanilla = Transition(conf, global_config, num_channel=feat['seq_act'].shape[-1])
+	attn_vanilla = TransitionOpt(conf, global_config, num_channel=feat['seq_act'].shape[-1])
 	attn_vanilla.load_weights_from_af2(params, 'transition_block')
 	
 
@@ -158,7 +155,7 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	# TriangleAttentionTest(args, config, global_config)
+	TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationTest(args, config, global_config)
 	# OuterProductMeanTest(args, config, global_config)
 	# TransitionTest(args, config, global_config)

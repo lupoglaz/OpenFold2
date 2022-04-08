@@ -219,6 +219,7 @@ class EvoformerIterationFF(nn.Module):
 		pair_act = self.triangle_multiplication_incoming(pair_act, pair_mask, is_training=is_training)
 		pair_act = self.triangle_attention_starting_node(pair_act, pair_mask, is_training=is_training)
 		pair_act = self.triangle_attention_ending_node(pair_act, pair_mask, is_training=is_training)
+		
 		#Pair - > Pair
 		pair_act = self.pair_transition(pair_act, pair_mask, is_training=is_training)
 		return msa_act, pair_act
@@ -245,7 +246,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 															is_extra_msa=True))
 		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
+			self.evoformer_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=False))

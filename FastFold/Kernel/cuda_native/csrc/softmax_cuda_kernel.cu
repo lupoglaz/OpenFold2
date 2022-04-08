@@ -427,6 +427,7 @@ __global__ void fastfold_softmax_scale_mask_fp32(float *input, float *mask, floa
         float *row_input = input + row_offset * cols;
         float *row_output = output + row_offset * cols;
         float *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
+		// float *mask_ptr = mask + ((row_offset / (head )) * cols);
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -587,8 +588,7 @@ at::Tensor fused_scale_mask_softmax_forward(at::Tensor input, at::Tensor mask, i
     const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
     int head = input.sizes()[2];
     at::Tensor output = at::empty_like(input);
-	printf("OLOLO %d", head);
-
+	
     int grid = (rows + 3) / 4;
     dim3 block(128);
 

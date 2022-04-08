@@ -3,28 +3,51 @@ from pathlib import Path
 import pickle
 import torch
 
-from alphafold.Tests.Model.quaternion_test import convert, check_recursive
-from alphafold.Model.alphafold import AlphaFold, EmbeddingsAndEvoformer, EvoformerIteration
+from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
+from alphafold.Model.alphafold import AlphaFold, EmbeddingsAndEvoformer, EvoformerIterationOpt, EvoformerIterationFF
 from alphafold.Model import model_config
 
 
-def load_data(args, filename):
-	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
-		fnargs, params, res = pickle.load(f)
-	return convert(fnargs), params, convert(res)
+# def load_data(args, filename):
+# 	with open(Path(args.debug_dir)/Path(f'{filename}.pkl'), 'rb') as f:
+# 		fnargs, params, res = pickle.load(f)
+# 	return convert(fnargs), params, convert(res)
 
-def EvoformerIterationTest1(args, config, global_config):
+def EvoformerIterationTest(args, config, global_config):
 	feat, params, res = load_data(args, 'EvoformerIteration1')
 	conf = config.model.embeddings_and_evoformer.evoformer
 	
-	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
-	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
-
-	activations = {'msa': feat['msa_act'], 'pair': feat['pair_act']}
-	masks = {'msa': feat['msa_mask'], 'pair': feat['pair_mask']}
+	attn_vanilla = EvoformerIterationOpt(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
+	attn_vanilla.load_weights_from_af2(params, rel_path='evoformer_iteration')
 	
-	this_res = attn(activations, masks, is_training=False)
-	check_recursive(res, this_res)
+	attn_opt = EvoformerIterationFF(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
+	attn_opt.load_weights_from_af2(params, rel_path='evoformer_iteration')
+		
+	feat['msa_act'] = feat['msa_act'].to(device='cuda',dtype=torch.float32)
+	feat['pair_act'] = feat['pair_act'].to(device='cuda',dtype=torch.float32)
+	feat['msa_mask'] = feat['msa_mask'].to(device='cuda',dtype=torch.float32)
+	feat['pair_mask'] = feat['pair_mask'].to(device='cuda',dtype=torch.float32)
+
+	attn_vanilla.cuda()
+	alloc_start_vanilla = get_total_alloc()
+	handler_vanilla = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('EvoformerIteration'))
+	with torch.profiler.profile(on_trace_ready=handler_vanilla, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
+		res_vanilla = attn_vanilla(msa_act=feat['msa_act'], pair_act=feat['pair_act'], 
+								msa_mask=feat['msa_mask'], pair_mask=feat['pair_mask'], is_training=False)
+	profiler.step()
+	alloc_end_vanilla = get_total_alloc()
+	
+	attn_opt.cuda()
+	alloc_start_opt = get_total_alloc()
+	handler_opt = torch.profiler.tensorboard_trace_handler(Path('Log')/Path('EvoformerIterationOpt'))
+	with torch.profiler.profile(on_trace_ready=handler_opt, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
+		res_opt = attn_opt(msa_act=feat['msa_act'], pair_act=feat['pair_act'], 
+						msa_mask=feat['msa_mask'], pair_mask=feat['pair_mask'], is_training=False)
+		profiler.step()
+	alloc_end_opt = get_total_alloc()
+
+	check_recursive(res_opt, res_vanilla)
+	print(f'Mem vanilla: {mem_to_str(alloc_end_vanilla-alloc_start_vanilla)} \t opt: {mem_to_str(alloc_end_opt-alloc_start_opt)}')
 	
 def EmbeddingsAndEvoformerTest(args, config, global_config):
 	feat, params, res = load_data(args, 'EmbeddingsAndEvoformer')
@@ -92,8 +115,11 @@ if __name__=='__main__':
 	args = parser.parse_args()
 
 	config = model_config(args.model_name)
+	global_config = config.model.global_config
+
+	EvoformerIterationTest(args, config, global_config)
 		
-	handler = torch.profiler.tensorboard_trace_handler(Path('Log'))
-	with torch.profiler.profile(on_trace_ready=handler, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
-		AlphaFoldTest(args, config)
-		profiler.step()
+	# handler = torch.profiler.tensorboard_trace_handler(Path('Log'))
+	# with torch.profiler.profile(on_trace_ready=handler, with_stack=True, with_modules=True, profile_memory=True, record_shapes=True) as profiler:
+	# 	AlphaFoldTest(args, config)
+	# 	profiler.step()

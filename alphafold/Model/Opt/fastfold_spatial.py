@@ -55,13 +55,13 @@ class TriangleAttentionFF(nn.Module):
 		assert pair_act_raw.ndimension() == 3
 		assert pair_mask.ndimension() == 2
 		if self.config.orientation == 'per_column':
-			pair_act_raw = pair_act_raw.transpose(-2, -3)
+			pair_act = pair_act_raw.transpose(-2, -3)
 			pair_mask = pair_mask.transpose(-1, -2)
+		else:
+			pair_act = pair_act_raw
 		
-		pair_act = self.query_norm(pair_act_raw)
+		pair_act = self.query_norm(pair_act)
 		nonbatched_bias = self.feat_2d_weights(pair_act).unsqueeze(0)
-		# nonbatched_bias = permute_final_dims(nonbatched_bias, (2,0,1))
-		# print('FF', pair_act.size(), nonbatched_bias.size())
 		pair_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
 							batched_args=[pair_act, pair_mask],
 							nonbatched_args=[nonbatched_bias],
@@ -69,11 +69,10 @@ class TriangleAttentionFF(nn.Module):
 		
 		if self.config.orientation == 'per_column':
 			pair_act = pair_act.transpose(-2, -3)
+			dropout_mask = torch.ones_like(pair_act[:, 0:1, :], device=pair_act.device, dtype=pair_act.dtype)
+		else:
+			dropout_mask = torch.ones_like(pair_act[0:1, :, :], device=pair_act.device, dtype=pair_act.dtype)
 
-		# pair_act = pair_act.unsqueeze(dim=1)
-		# pair_act_raw = pair_act_raw.unsqueeze(dim=1)
-		dropout_mask = torch.ones_like(pair_act, device=pair_act.device, dtype=pair_act.dtype)
-		
 		return bias_dropout_add(pair_act, self.out_bias, dropout_mask, pair_act_raw, prob=self.config.dropout_rate, training=is_training)#.squeeze(dim=1)
 
 
@@ -279,7 +278,7 @@ class OuterProductMeanFF(nn.Module):
 								input_subbatch_dim=0, output_subbatch_dims=[0,1])
 				
 		eps = 1e-3
-		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)>=1
+		norm = torch.einsum('...abc,...adc->...bdc', msa_mask, msa_mask)#>=1
 		act /= (norm.to(dtype=msa_mask.dtype) + eps)
 		return act
 

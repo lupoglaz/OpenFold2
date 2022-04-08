@@ -106,8 +106,8 @@ class AttentionFF(nn.Module):
 		Arguments: 
 			q_data: [batch_size, num_queries, querry_dim]
 			m_data: [batch_size, num_keys, value_dim]
-			bias: [batch_size, num_queries, num_keys]
-			nonbatched_bias: [num_queries, num_keys]
+			bias: [batch_size, num_queries*num_keys]
+			nonbatched_bias: [batch_size, num_querries, num_keys, hum_head]
 		Returns:
 			[batch_size, num_queries, output_dim]
 		"""
@@ -115,25 +115,22 @@ class AttentionFF(nn.Module):
 		q, k, v = map(lambda t: rearrange(t, 'b1 n (h d) -> b1 h n d', h=self.num_head), qkv)
 
 		logits = torch.matmul(q, k.transpose(-1,-2))
-		# print('FF',q.size(), k.transpose(-1,-2).size())
-		# return logits*self.scaling
-		# return k.transpose(-2,-3)
+		
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			# print('FF nonbbias:', nonbatched_bias.size())
 			# print('FF logits:', logits.size())
+			# print('FF mask:', mask.size())
 			weights = scale_mask_bias_softmax(logits.unsqueeze(1), mask, nonbatched_bias, self.scaling).squeeze(1)
 			# print('FF weights:', weights.size())
+			# print('FF:',nonbatched_bias[0,0,2,:])
+			# print('FF:',weights[0,0,2,:])
 			# return weights
 		else:
 			#head should be 3rd dimension
-			print(logits.size(), mask.size())
-			print(mask[0,0,:])
 			weights = scale_mask_softmax(logits.unsqueeze(1), mask, self.scaling).squeeze(1)
 			# weights = scale_mask_softmax(logits, mask, self.scaling)
-			print(weights.size())
-			print(weights[0,0,2,:])
-			return weights
+			# return weights
 		
 		weighted_avg = torch.matmul(weights, v)
 		# print('FF weighted_avg:', weighted_avg.size())
@@ -232,7 +229,7 @@ class MSAColumnAttentionFF(MSAColumnAttention):
 		
 		msa_act = self.query_norm(msa_act)
 		
-		msa_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
+		msa_act = inference_subbatch(self.attn, self.global_config.subbatch_size, 
 							batched_args=[msa_act, msa_mask],
 							nonbatched_args=[None],
 							low_memory=(not is_training))
