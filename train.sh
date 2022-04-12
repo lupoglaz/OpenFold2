@@ -22,7 +22,7 @@ export PYTHONFAULTHANDLER=1
 srun python training.py \
 -dataset_dir /gpfs/gpfs0/g.derevyanko/OpenFold2Dataset/Features \
 -log_dir TrainLog \
--model_name model_small \
+-model_name model_big \
 -num_gpus 4 \
 -num_nodes 4 \
 -num_accum 4 \

@@ -67,8 +67,8 @@ CONFIG_DIFFS = {
 		'model.heads.structure_module.structural_violation_loss_weight': 0.0
 	},
 	'model_big': { #fits to 1080 with fp16 with deepspeed amp (weight in fp16)
-		'data.eval.crop_size': 128,
-		'data.common.max_extra_msa': 256,
+		'data.eval.crop_size': 256,
+		'data.common.max_extra_msa': 1024,
 		'data.common.num_recycle': 3, #this and next one shoould be the same
 		'model.num_recycle': 3, #this shoould be the same as the previous one
 		'data.common.resample_msa_in_recycling': False,

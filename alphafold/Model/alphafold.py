@@ -181,9 +181,10 @@ class EvoformerIterationFF(nn.Module):
 		self.is_extra_msa = is_extra_msa
 		
 		if is_extra_msa:
-			raise NotImplemented("Use EvoformerIteration for extra_msa")
+			self.msa_column_attention = MSAColumnGlobalAttentionOpt(config.msa_column_attention, global_config, msa_dim)
+		else:
+			self.msa_column_attention = MSAColumnAttentionFF(config.msa_column_attention, global_config, msa_dim)
 
-		self.msa_column_attention = MSAColumnAttentionFF(config.msa_column_attention, global_config, msa_dim)
 		self.msa_row_attention_with_pair_bias = MSARowAttentionWithPairBiasFF(config.msa_row_attention_with_pair_bias, global_config, pair_dim, msa_dim)		
 		self.msa_transition = TransitionFF(config.msa_transition, global_config, msa_dim)
 		self.outer_product_mean = OuterProductMeanFF(config.outer_product_mean, global_config, pair_dim, msa_dim)
@@ -195,7 +196,10 @@ class EvoformerIterationFF(nn.Module):
 
 	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration', ind:int=None):
 		self.msa_row_attention_with_pair_bias.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_row_attention_with_pair_bias', ind=ind)
-		self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention', ind=ind)
+		if not self.is_extra_msa:
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_attention', ind=ind)
+		else:
+			self.msa_column_attention.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_column_global_attention', ind=ind)
 		self.msa_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/msa_transition', ind=ind)
 		self.outer_product_mean.load_weights_from_af2(data, rel_path=f'{rel_path}/outer_product_mean', ind=ind)
 		self.triangle_multiplication_outgoing.load_weights_from_af2(data, rel_path=f'{rel_path}/triangle_multiplication_outgoing', ind=ind)
@@ -240,7 +244,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
 		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
-			self.extra_msa_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
+			self.extra_msa_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=True))
