@@ -84,13 +84,20 @@ class AlphaFoldModule(pl.LightningModule):
 
 		
 	def forward(self, feature_dict, pdb_path:Path=None):
-		batch = self.af2features(feature_dict, random_seed=42)
-		ret, total_loss = self.af2(batch, is_training=False)
+		if self.af2features.device is None:
+			self.af2features.device = self.device
+		if self.af2features.dtype != self.dtype:
+			self.af2features.dtype = self.dtype
 		
-		if not(pdb_path is None):
-			protein_pdb = protein.from_prediction(features=batch, result=ret)
-			with open(pdb_path, 'w') as f:
-				f.write(protein.to_pdb(protein_pdb))
+		batch = self.af2features(feature_dict, random_seed=42)
+		
+		num_recycle = torch.randint(low=0, high=self.af2.config.num_recycle+1, size=(1,))
+		ret, total_loss = self.af2(batch, is_training=True, iter_num_recycling=num_recycle, compute_loss=True)
+		
+		# if not(pdb_path is None):
+		# 	protein_pdb = protein.from_prediction(features=batch, result=ret)
+		# 	with open(pdb_path, 'w') as f:
+		# 		f.write(protein.to_pdb(protein_pdb))
 
 		return ret, total_loss
 
@@ -111,6 +118,9 @@ class AlphaFoldModule(pl.LightningModule):
 		batch = self.af2features(feature_dict, random_seed=42)
 		if self.dtype == torch.float16:
 			batch = self.af2features.convert(batch, dtypes={torch.float32: torch.float16,
+															torch.float64: torch.float32})
+		elif self.dtype == torch.bfloat16:
+			batch = self.af2features.convert(batch, dtypes={torch.float32: torch.bfloat16,
 															torch.float64: torch.float32})
 		else:
 			batch = self.af2features.convert(batch, dtypes={torch.float32: torch.float32,
@@ -153,6 +163,7 @@ class DataModule(pl.LightningDataModule):
 	def train_dataloader(self):
 		def load_pkl(batch):
 			file_path_list, = batch
+			print(file_path_list[0])
 			assert len(file_path_list) == 1
 			with open(file_path_list[0], 'rb') as f:
 				return pickle.load(f)
@@ -178,19 +189,22 @@ class CustomDDPPlugin(DDPPlugin):
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')
 	# parser.add_argument('-dataset_dir', default='/media/HDD/AlphaFold2Dataset/Features', type=str)
-	parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	# parser.add_argument('-dataset_dir', default='/media/lupoglaz/AlphaFold2Dataset/Features', type=str)
+	parser.add_argument('-dataset_dir', default='/gpfs/gpfs0/g.derevyanko/OpenFold2Dataset/Features', type=str)
+	
 	parser.add_argument('-log_dir', default='LogTrain', type=str)
 	# parser.add_argument('-log_dir', default=None, type=str)
 
-	parser.add_argument('-model_name', default='model_tiny', type=str)
-	# parser.add_argument('-model_name', default='model_small', type=str)
+	# parser.add_argument('-model_name', default='model_tiny', type=str)
+	parser.add_argument('-model_name', default='model_small', type=str)
 	# parser.add_argument('-model_name', default='model_big', type=str)
 	
 	parser.add_argument('-num_gpus', default=1, type=int) #per node
 	parser.add_argument('-num_nodes', default=1, type=int)
 	parser.add_argument('-num_accum', default=1, type=int)
 	parser.add_argument('-max_iter', default=75000, type=int)
-	parser.add_argument('-precision', default=16, type=int)
+	# parser.add_argument('-precision', default=16)
+	parser.add_argument('-precision', default='bf16')
 	parser.add_argument('-progress_bar', default=1, type=int)
 	parser.add_argument('-deepspeed_config_path', default='deepspeed_config.json', type=str)
 
@@ -205,6 +219,8 @@ if __name__=='__main__':
 	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
+	if args.precision == 'bf16':
+		model=model.to(dtype=torch.bfloat16)
 	
 	if "SLURM_JOB_ID" in os.environ:
 		cluster_environment = SLURMEnvironment()

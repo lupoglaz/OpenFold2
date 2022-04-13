@@ -166,6 +166,8 @@ class EvoformerIterationOpt(nn.Module):
 		pair_act = DO(self.triangle_attention_ending_node, pair_act, pair_mask)
 		pair_act = DO(self.pair_transition, pair_act, pair_mask)
 		
+		# print('EvoformerOpt', torch.any(torch.isnan(msa_act)), torch.any(torch.isnan(pair_act)))
+		
 		# print('Pair act sum:', torch.sum(pair_act))
 		# print('MSA act sum:',torch.sum(msa_act))
 		return msa_act, pair_act
@@ -226,6 +228,7 @@ class EvoformerIterationFF(nn.Module):
 		
 		#Pair - > Pair
 		pair_act = self.pair_transition(pair_act, pair_mask, is_training=is_training)
+		# print('EvoformerFF', torch.any(torch.isnan(msa_act)), torch.any(torch.isnan(pair_act)))
 		return msa_act, pair_act
 		
 class EmbeddingsAndEvoformer(nn.Module):
@@ -244,7 +247,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
 		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
-			self.extra_msa_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
+			self.extra_msa_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=True))
@@ -281,6 +284,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 	def forward(self, batch: Mapping[str, torch.Tensor], is_training:bool=False, safe_key=None):
 		# print('Embedding dtype:', self.input_emb.preprocess_1d.weight.dtype)
 		# print('Target feat dtype:', batch['target_feat'].dtype)
+
 		inp_msa_act, inp_pair_act = self.input_emb(batch)
 
 		rec_msa_act, rec_pair_act = self.recycle_emb(batch)

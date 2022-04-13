@@ -20,6 +20,7 @@ def model_config(name: str) -> ml_collections.ConfigDict:
 CONFIG_DIFFS = {
 	'model_tiny': { #fits to 1080 with fp32 and runs with latency ~1.0
 		'data.eval.crop_size': 128,
+		'data.eval.max_msa_clusters': 128,
 		'data.common.max_extra_msa': 256,
 		'data.common.num_recycle': 0, #this and next one shoould be the same
 		'model.num_recycle': 0, #this shoould be the same as the previous one
@@ -44,6 +45,7 @@ CONFIG_DIFFS = {
 	},
 	'model_small': { #fits to 1080 with fp16 with native amp (weight in fp32)
 		'data.eval.crop_size': 128,
+		'data.eval.max_msa_clusters': 128,
 		'data.common.max_extra_msa': 256,
 		'data.common.num_recycle': 3, #this and next one shoould be the same
 		'model.num_recycle': 3, #this shoould be the same as the previous one
@@ -68,12 +70,13 @@ CONFIG_DIFFS = {
 	},
 	'model_big': { #fits to 1080 with fp16 with deepspeed amp (weight in fp16)
 		'data.eval.crop_size': 256,
-		'data.common.max_extra_msa': 1024,
+		'data.eval.max_msa_clusters': 128,
+		'data.common.max_extra_msa': 512,
 		'data.common.num_recycle': 3, #this and next one shoould be the same
 		'model.num_recycle': 3, #this shoould be the same as the previous one
 		'data.common.resample_msa_in_recycling': False,
 		'data.common.use_templates': False,
-		'model.embeddings_and_evoformer.evoformer_num_block': 48, #default 48
+		'model.embeddings_and_evoformer.evoformer_num_block': 24, #default 48
 		'model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias.num_head': 8, #default 8
 		'model.embeddings_and_evoformer.evoformer.msa_column_attention.num_head': 8, #default 8
 		'model.embeddings_and_evoformer.evoformer.outer_product_mean.num_outer_channel': 32, #default 32
