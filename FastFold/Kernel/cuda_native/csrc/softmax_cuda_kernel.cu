@@ -14,8 +14,10 @@
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
+// Georgy: standard fp32 +inf, used for bfloat16 and float32
 #define CUSTOM_INF_32 1.0E9
-#define CUSTOM_INF_16 1.0E6
+// Georgy: fp16 inf
+#define CUSTOM_INF_16 6.0E4
 
 __inline__ __device__ float WarpAllReduceMax(float val) {
     for (int mask = 1; mask < 32; mask *= 2) {
