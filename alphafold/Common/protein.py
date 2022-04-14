@@ -22,10 +22,15 @@ import numpy as np
 from string import ascii_uppercase,ascii_lowercase
 import scipy
 
-CHAIN_IDs = ascii_uppercase+ascii_lowercase
+# Complete sequence of chain IDs supported by the PDB format.
+CHAIN_IDS = ascii_uppercase+ascii_lowercase
+MAX_CHAINS = len(CHAIN_IDS)  # := 62.
 
 FeatureDict = Mapping[str, np.ndarray]
 ModelOutput = Mapping[str, Any]  # Is a nested dict.
+
+
+
 
 
 @dataclasses.dataclass(frozen=True)
@@ -171,7 +176,7 @@ def to_pdb(prot: Protein) -> str:
     elif residue_index[i] != residue_index_prev:
       res_num += 1
     residue_index_prev = residue_index[i]
-    chain_id = CHAIN_IDs[chain_index]
+    chain_id = CHAIN_IDS[chain_index]
     res_name_3 = res_1to3(aatype[i])
     #
     for atom_name, pos, mask, b_factor in zip(

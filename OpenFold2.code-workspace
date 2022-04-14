@@ -2,6 +2,9 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../alphafold21"
 		}
 	],
 	"settings": {}

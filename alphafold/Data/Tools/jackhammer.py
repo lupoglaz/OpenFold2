@@ -1,5 +1,6 @@
 from pathlib import Path
 from alphafold.Data.Tools import utils
+from alphafold.Data import parsers
 from typing import Optional, Callable, Any, Mapping, Sequence
 import subprocess
 
@@ -30,7 +31,7 @@ class Jackhammer:
 		self.num_streamed_chunks = num_streamed_chunks
 		self.streaming_callback = streaming_callback
 
-	def _query_chunk(self, input_fasta_path:Path, database_path:Path) -> Mapping[str, Any]:
+	def _query_chunk(self, input_fasta_path:Path, database_path:Path, max_sequences:Optional[int]=None) -> Mapping[str, Any]:
 		with utils.tmpdir_manager() as query_tmp_dir:
 			sto_path = query_tmp_dir / Path('output.sto')
 			cmd_flags = [
@@ -48,16 +49,16 @@ class Jackhammer:
 
 			if self.get_tblout:
 				tblout_path = query_tmp_dir / Path('tblout.txt')
-				cmdflags.extend(['-tblout', tblout_path.as_posix()])
+				cmd_flags.extend(['-tblout', tblout_path.as_posix()])
 
 			if not (self.z_value is None):
-				cmdflags.extend(['-Z', str(self.z_value)])
+				cmd_flags.extend(['-Z', str(self.z_value)])
 
 			if not (self.dom_e is None):
-				cmdflags.extend(['--domE', str(self.dom_e)])
+				cmd_flags.extend(['--domE', str(self.dom_e)])
 			
 			if not (self.incdom_e is None):
-				cmdflags.extend(['--incdomE', str(self.incdom_e)])
+				cmd_flags.extend(['--incdomE', str(self.incdom_e)])
 
 			cmd = [self.binary_path.as_posix()] + cmd_flags + [input_fasta_path.as_posix(), database_path.as_posix()]
 			print(f"Launching subprocess {''.join(cmd)}")
@@ -73,8 +74,11 @@ class Jackhammer:
 				with open(tblout_path) as f:
 					tbl = f.read()
 			
-			with open(sto_path) as f:
-				sto = f.read()
+			if max_sequences is None:
+				with open(sto_path) as f:
+					sto = f.read()
+			else:
+				sto = parsers.truncate_stockholm_msa(sto_path, max_sequences)
 
 			raw_output = dict(
 				sto = sto,
@@ -85,9 +89,9 @@ class Jackhammer:
 			)
 			return raw_output
 
-	def query(self, input_fasta_path:Path) -> Sequence[Mapping[str, Any]]:
+	def query(self, input_fasta_path:Path, max_sequences:Optional[int]=None) -> Sequence[Mapping[str, Any]]:
 		if self.num_streamed_chunks is None:
-			return [self._query_chunk(input_fasta_path, self.database_path)]
+			return [self._query_chunk(input_fasta_path, self.database_path, max_sequences=max_sequences)]
 		
 		raise NotImplemented()
 

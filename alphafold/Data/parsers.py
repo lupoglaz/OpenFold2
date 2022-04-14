@@ -1,9 +1,29 @@
 import collections
 import dataclasses
 import re
-from typing import Tuple, Sequence, List, Optional
+from typing import Tuple, Sequence, List, Optional, Set
+import string
 
 DeletionMatrix = Sequence[Sequence[int]]
+
+@dataclasses.dataclass(frozen=True)
+class Msa:
+	"""Class representing a parsed MSA file."""
+	sequences: Sequence[str]
+	deletion_matrix: DeletionMatrix
+	descriptions: Sequence[str]
+
+	def __post_init__(self):
+		if not (len(self.sequences) == len(self.deletion_matrix) == len(self.descriptions)):
+			raise ValueError('All fields for an MSA must have the same length. '
+							f'Got {len(self.sequences)} sequences, '
+							f'{len(self.deletion_matrix)} rows in the deletion matrix and '
+							f'{len(self.descriptions)} descriptions.')
+	def __len__(self):
+		return len(self.sequences)
+
+	def truncate(self, max_seqs: int):
+		return Msa(sequences=self.sequences[:max_seqs], deletion_matrix=self.deletion_matrix[:max_seqs], descriptions=self.descriptions[:max_seqs])
 
 @dataclasses.dataclass(frozen=True)
 class TemplateHit:
@@ -15,9 +35,41 @@ class TemplateHit:
 	hit_sequence: str
 	indices_query: List[int]
 	indices_hit: List[int]
+
+# Sequences coming from UniProtKB database come in the
+# `db|UniqueIdentifier|EntryName` format, e.g. `tr|A0A146SKV9|A0A146SKV9_FUNHE`
+# or `sp|P0C2L1|A3X1_LOXLA` (for TREMBL/Swiss-Prot respectively).
+_UNIPROT_PATTERN = re.compile(
+	r"""
+	^
+	# UniProtKB/TrEMBL or UniProtKB/Swiss-Prot
+	(?:tr|sp)
+	\|
+	# A primary accession number of the UniProtKB entry.
+	(?P<AccessionIdentifier>[A-Za-z0-9]{6,10})
+	# Occasionally there is a _0 or _1 isoform suffix, which we ignore.
+	(?:_\d)?
+	\|
+	# TREMBL repeats the accession ID here. Swiss-Prot has a mnemonic
+	# protein ID code.
+	(?:[A-Za-z0-9]+)
+	_
+	# A mnemonic species identification code.
+	(?P<SpeciesIdentifier>([A-Za-z0-9]){1,5})
+	# Small BFD uses a final value after an underscore, which we ignore.
+	(?:_\d+)?
+	$
+	""",
+	re.VERBOSE)
+
+
+@dataclasses.dataclass(frozen=True)
+class Identifiers:
+	species_id: str = ''
 	
 
 def parse_fasta(fasta_string: str) -> Tuple[Sequence[str], Sequence[str]]:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/parsers.py#L68"""
 	sequences = []
 	descriptions = []
 	index = -1
@@ -34,7 +86,8 @@ def parse_fasta(fasta_string: str) -> Tuple[Sequence[str], Sequence[str]]:
 
 	return sequences, descriptions
 
-def parse_stockholm(stockholm_str: str) -> Tuple[Sequence[str], DeletionMatrix, Sequence[str]]:
+def parse_stockholm(stockholm_str: str) -> Msa:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/parsers.py#L97"""
 	name_to_sequence = collections.OrderedDict()
 	for line in stockholm_str.splitlines():
 		line = line.strip()
@@ -67,7 +120,7 @@ def parse_stockholm(stockholm_str: str) -> Tuple[Sequence[str], DeletionMatrix, 
 					deletion_count = 0
 		deletion_matrix.append(deletion_vec)
 	
-	return msa, deletion_matrix, list(name_to_sequence.keys())
+	return Msa(sequences=msa, deletion_matrix=deletion_matrix, descriptions=list(name_to_sequence.keys()))
 
 def parse_hhr(hhr_string:str) -> Sequence[TemplateHit]:
 
@@ -191,3 +244,95 @@ def convert_stockholm_to_a3m(stockholm_format: str, max_sequences: Optional[int]
 
 	fasta_chunks = (f">{k} {descriptions.get(k, '')}\n{a3m_sequences[k]}" for k in a3m_sequences)
 	return '\n'.join(fasta_chunks) + '\n'
+
+
+def parse_a3m(a3m_string: str) -> Msa:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/parsers.py#L157"""
+
+	sequences, descriptions = parse_fasta(a3m_string)
+	deletion_matrix = []
+	for msa_sequence in sequences:
+		deletion_vec = []
+		deletion_count = 0
+		for j in msa_sequence:
+			if j.islower():
+				deletion_count += 1
+			else:
+				deletion_vec.append(deletion_count)
+				deletion_count = 0
+		deletion_matrix.append(deletion_vec)
+
+	# Make the MSA matrix out of aligned (deletion-free) sequences.
+	deletion_table = str.maketrans('', '', string.ascii_lowercase)
+	aligned_sequences = [s.translate(deletion_table) for s in sequences]
+	return Msa(sequences=aligned_sequences,
+				deletion_matrix=deletion_matrix,
+				descriptions=descriptions)
+
+
+def _keep_line(line: str, seqnames: Set[str]) -> bool:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/parsers.py#L257"""
+	if not line.strip():
+		return True
+	if line.strip() == '//':  # End tag
+		return True
+	if line.startswith('# STOCKHOLM'):  # Start tag
+		return True
+	if line.startswith('#=GC RF'):  # Reference Annotation Line
+		return True
+	if line[:4] == '#=GS':  # Description lines - keep if sequence in list.
+		_, seqname, _ = line.split(maxsplit=2)
+		return seqname in seqnames
+	elif line.startswith('#'):  # Other markup - filter out
+		return False
+	else:  # Alignment data - keep if sequence in list.
+		seqname = line.partition(' ')[0]
+		return seqname in seqnames
+
+
+def truncate_stockholm_msa(stockholm_msa_path: str, max_sequences: int) -> str:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/parsers.py#L277"""
+	seqnames = set()
+	filtered_lines = []
+
+	with open(stockholm_msa_path) as f:
+		for line in f:
+			if line.strip() and not line.startswith(('#', '//')):
+				# Ignore blank lines, markup and end symbols - remainder are alignment
+				# sequence parts.
+				seqname = line.partition(' ')[0]
+				seqnames.add(seqname)
+				if len(seqnames) >= max_sequences:
+					break
+		f.seek(0)
+		for line in f:
+			if _keep_line(line, seqnames):
+				filtered_lines.append(line)
+
+	return ''.join(filtered_lines)
+
+def _parse_sequence_identifier(msa_sequence_identifier: str) -> Identifiers:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/msa_identifiers.py#L54
+	"""
+	matches = re.search(_UNIPROT_PATTERN, msa_sequence_identifier.strip())
+	if matches:
+		return Identifiers(species_id=matches.group('SpeciesIdentifier'))
+	return Identifiers()
+
+
+def _extract_sequence_identifier(description: str) -> Optional[str]:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/msa_identifiers.py#L75"""
+	split_description = description.split()
+	if split_description:
+		return split_description[0].partition('/')[0]
+	else:
+		return None
+
+
+def get_identifiers(description: str) -> Identifiers:
+	"""https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/msa_identifiers.py#L84"""
+	sequence_identifier = _extract_sequence_identifier(description)
+	if sequence_identifier is None:
+		return Identifiers()
+	else:
+		return _parse_sequence_identifier(sequence_identifier)
