@@ -113,8 +113,9 @@ class AttentionFF(nn.Module):
 		"""
 		qkv = self.qkv_weights(in_data).chunk(3, dim=-1)
 		q, k, v = map(lambda t: rearrange(t, 'b1 n (h d) -> b1 h n d', h=self.num_head), qkv)
-
+		# print('FF q NaN:', torch.any(torch.isnan(q)))
 		logits = torch.matmul(q, k.transpose(-1,-2))
+		# print('FF logits NaN:', torch.any(torch.isnan(logits)))
 		
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
@@ -131,6 +132,14 @@ class AttentionFF(nn.Module):
 			weights = scale_mask_softmax(logits.unsqueeze(1), mask, self.scaling).squeeze(1)
 			# weights = scale_mask_softmax(logits, mask, self.scaling)
 			# return weights
+		
+		# if torch.any(torch.isnan(weights)):
+		# 	print('FF mask==0:', torch.any(mask==0.0))
+		# 	print('FF weights NaN:', torch.any(torch.isnan(weights)))
+		# 	print(mask.size(), weights.size())
+		# 	print(torch.all(mask==0.0, dim=-1))
+		# 	print(torch.any(torch.isnan(weights), dim=-1))
+		# 	sys.exit()
 		
 		weighted_avg = torch.matmul(weights, v)
 		# print('FF weighted_avg:', weighted_avg.size())

@@ -14,7 +14,8 @@
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
-// #define INF = 1e-8
+#define CUSTOM_INF_32 1.0E9
+#define CUSTOM_INF_16 1.0E6
 
 __inline__ __device__ float WarpAllReduceMax(float val) {
     for (int mask = 1; mask < 32; mask *= 2) {
@@ -56,7 +57,7 @@ __global__ void fastfold_softmax_fp32(float *input, float *output, int rows, int
         float *row_input = input + row_offset * cols;
         float *row_output = output + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -111,7 +112,7 @@ __global__ void fastfold_softmax_bfp16(at::BFloat16 *input, at::BFloat16 *output
         at::BFloat16 *row_input = input + row_offset * cols;
         at::BFloat16 *row_output = output + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -167,7 +168,7 @@ __global__ void fastfold_softmax_fp16(at::Half *input, at::Half *output, int row
         at::Half *row_input = input + row_offset * cols;
         at::Half *row_output = output + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_16;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -224,7 +225,7 @@ __global__ void fastfold_softmax_grad_fp32(float *d_output, float *output, float
         float *row_output = output + row_offset * cols;
         float *row_d_input = d_input + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -275,7 +276,7 @@ __global__ void fastfold_softmax_grad_bfp16(at::BFloat16 *d_output, at::BFloat16
         at::BFloat16 *row_output = output + row_offset * cols;
         at::BFloat16 *row_d_input = d_input + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -327,7 +328,7 @@ __global__ void fastfold_softmax_grad_fp16(at::Half *d_output, at::Half *output,
         at::Half *row_output = output + row_offset * cols;
         at::Half *row_d_input = d_input + row_offset * cols;
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_16;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -432,13 +433,13 @@ __global__ void fastfold_softmax_scale_mask_fp32(float *input, float *mask, floa
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_32;
             } else {
                 buf[i] = row_input[lane_id * cols_per_thread + i] * scale;
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
@@ -491,13 +492,13 @@ __global__ void fastfold_softmax_scale_mask_bfp16(at::BFloat16 *input, at::BFloa
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_32;
             } else {
                 buf[i] = static_cast<float>(row_input[lane_id * cols_per_thread + i]) * scale;
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
@@ -551,13 +552,13 @@ __global__ void fastfold_softmax_scale_mask_fp16(at::Half *input, at::Half *mask
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_16;
             } else {
                 buf[i] = static_cast<float>(row_input[lane_id * cols_per_thread + i]) * scale;
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_16;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
@@ -638,7 +639,7 @@ __global__ void fastfold_softmax_scale_mask_grad_fp32(float *d_output, float *ou
         float *row_d_input = d_input + row_offset * cols;
         float *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -696,7 +697,7 @@ __global__ void fastfold_softmax_scale_mask_grad_bfp16(at::BFloat16 *d_output, a
         at::BFloat16 *row_d_input = d_input + row_offset * cols;
         at::BFloat16 *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
 
         #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -754,7 +755,7 @@ __global__ void fastfold_softmax_scale_mask_grad_fp16(at::Half *d_output, at::Ha
         at::Half *row_d_input = d_input + row_offset * cols;
         at::Half *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_16;
 
         #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -846,14 +847,14 @@ __global__ void fastfold_softmax_scale_mask_bias_fp32(float *input, float *mask,
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_32;
             } else {
                 buf[i] = row_input[lane_id * cols_per_thread + i] * scale +
                         bias_ptr[lane_id * cols_per_thread + i];
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
@@ -907,14 +908,14 @@ __global__ void fastfold_softmax_scale_mask_bias_bfp16(at::BFloat16 *input, at::
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_32;
             } else {
                 buf[i] = static_cast<float>(row_input[lane_id * cols_per_thread + i]) * scale;
                 buf[i] += static_cast<float>(bias_ptr[lane_id * cols_per_thread + i]);
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_32;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
@@ -969,14 +970,14 @@ __global__ void fastfold_softmax_scale_mask_bias_fp16(at::Half *input, at::Half 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             if (mask_ptr[lane_id * cols_per_thread + i] == 0) {
-                buf[i] = -1 * CUDART_INF_F;
+                buf[i] = -1 * CUSTOM_INF_16;
             } else {
                 buf[i] = static_cast<float>(row_input[lane_id * cols_per_thread + i]) * scale;
                 buf[i] += static_cast<float>(bias_ptr[lane_id * cols_per_thread + i]);
             }
         }
 
-        float thread_max = -1 * CUDART_INF_F;
+        float thread_max = -1 * CUSTOM_INF_16;
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
             thread_max = max(thread_max, buf[i]);
