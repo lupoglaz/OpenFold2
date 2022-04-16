@@ -1,13 +1,19 @@
+#############################################
+# Essentially the same code as 
+# https://github.com/deepmind/alphafold/blob/b85ffe10799ca08cc62146f1dabb4e4ee6c0a580/alphafold/data/pipeline_multimer.py
+#############################################
+
 import dataclasses
 import json
 import copy
 import tempfile
 import contextlib
+import collections
 from pathlib import Path
 
 from typing import Mapping, Sequence, Any, Optional
 from alphafold.Data.Tools import HHSearch, HHBlits, Jackhammer
-from alphafold.Data import parsers, pipeline, msa_pairing
+from alphafold.Data import parsers, pipeline, feature_processing, msa_pairing
 from alphafold.Common import residue_constants, protein
 import numpy as np
 
@@ -15,6 +21,25 @@ import numpy as np
 class _FastaChain:
 	sequence: str
 	description: str
+
+def int_id_to_str_id(num: int) -> str:
+	"""Encodes a number as a string, using reverse spreadsheet style naming.
+	Args:
+		num: A positive integer.
+	Returns:
+		A string that encodes the positive integer using reverse spreadsheet style,
+		naming e.g. 1 = A, 2 = B, ..., 27 = AA, 28 = BA, 29 = CA, ... This is the
+		usual way to encode chain IDs in mmCIF files.
+	"""
+	if num <= 0:
+		raise ValueError(f'Only positive integers allowed, got {num}.')
+
+	num = num - 1  # 1-based indexing.
+	output = []
+	while num >= 0:
+		output.append(chr(num % 26 + ord('A')))
+		num = num // 26 - 1
+	return ''.join(output)
 
 
 def _make_chain_id_map(sequences: Sequence[str], descriptions: Sequence[str]) -> Mapping[str, _FastaChain]:
@@ -96,6 +121,39 @@ class DataPipeline:
 			converted[feature_name] = feature
 		return converted
 
+
+	def add_assembly_features(self, all_chain_features):
+		# Group the chains by sequence
+		seq_to_entity_id = {}
+		grouped_chains = collections.defaultdict(list)
+		for chain_id, chain_features in all_chain_features.items():
+			seq = str(chain_features['sequence'])
+			if seq not in seq_to_entity_id:
+				seq_to_entity_id[seq] = len(seq_to_entity_id) + 1
+			grouped_chains[seq_to_entity_id[seq]].append(chain_features)
+		
+		new_all_chain_features = {}
+		chain_id = 1
+		for entity_id, group_chain_features in grouped_chains.items():
+			for sym_id, chain_features in enumerate(group_chain_features, start=1):
+				new_all_chain_features[f'{int_id_to_str_id(entity_id)}_{sym_id}'] = chain_features
+				seq_length = chain_features['seq_length']
+				chain_features['asym_id'] = chain_id * np.ones(seq_length)
+				chain_features['sym_id'] = sym_id * np.ones(seq_length)
+				chain_features['entity_id'] = entity_id * np.ones(seq_length)
+				chain_id += 1
+
+		return new_all_chain_features
+
+	def pad_msa(self, np_example, min_num_seq):
+		np_example = dict(np_example)
+		num_seq = np_example['msa'].shape[0]
+		if num_seq < min_num_seq:
+			for feat in ('msa', 'deletion_matrix', 'bert_mask', 'msa_mask'):
+				np_example[feat] = np.pad(np_example[feat], ((0, min_num_seq - num_seq), (0, 0)))
+			np_example['cluster_bias_mask'] = np.pad(np_example['cluster_bias_mask'], ((0, min_num_seq - num_seq),))
+		return np_example
+
 	def process(self, input_fasta_path: Path, msa_output_dir: Path):
 		with open(input_fasta_path) as f:
 			input_fasta_str = f.read()
@@ -120,8 +178,11 @@ class DataPipeline:
 														description=fasta_chain.description,
 														msa_output_dir=msa_output_dir,
 														is_homomer=is_homomer)
-			print(chain_features.keys())
 			chain_features = self.convert_monomer_features(chain_features, chain_id=chain_id)
-			print(chain_features.keys())
 			all_chain_features[chain_id] = chain_features
 			sequence_features[fasta_chain.sequence] = chain_features
+		
+		all_chain_features = self.add_assembly_features(all_chain_features)
+		np_example = feature_processing.pair_and_merge(all_chain_features)
+		np_example = self.pad_msa(np_example, 512)
+		return np_example
