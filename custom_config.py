@@ -44,7 +44,7 @@ CONFIG_DIFFS = {
 		'model.heads.structure_module.structural_violation_loss_weight': 0.0
 	},
 	'model_small': { #fits to 1080 with fp16 with native amp (weight in fp32)
-		'data.eval.crop_size': 128,
+		'data.eval.crop_size': 256,
 		'data.eval.max_msa_clusters': 128,
 		'data.common.max_extra_msa': 256,
 		'data.common.num_recycle': 3, #this and next one shoould be the same

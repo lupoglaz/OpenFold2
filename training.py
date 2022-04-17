@@ -23,6 +23,7 @@ from pytorch_lightning.plugins.environments import SLURMEnvironment
 
 
 from Utils.loggers import PerformanceLoggingCallback
+from Utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 
 class ExponentialMovingAverage:
 	def __init__(self, model:torch.nn.Module, decay:float) -> None:
@@ -207,6 +208,8 @@ if __name__=='__main__':
 	parser.add_argument('-precision', default='bf16')
 	parser.add_argument('-progress_bar', default=1, type=int)
 	parser.add_argument('-deepspeed_config_path', default='deepspeed_config.json', type=str)
+	parser.add_argument('-resume_chkpt', default=None, type=str)
+	
 
 	args = parser.parse_args()
 	args.dataset_dir = Path(args.dataset_dir)
@@ -219,6 +222,23 @@ if __name__=='__main__':
 	data = DataModule(args.dataset_dir, batch_size=1)#args.num_gpus*args.num_nodes)
 	config = model_config(args.model_name)
 	model = AlphaFoldModule(config)
+
+	if not(args.resume_chkpt is None):
+		sd = get_fp32_state_dict_from_zero_checkpoint(args.resume_chkpt)
+		sd = {k[len('module.af2.'):]:v for k,v in sd.items()}
+		this_sd = model.af2.state_dict()
+		missing_params = []
+		for key in sd.keys():
+			if not(key in this_sd):
+				missing_params.append(key)
+		excessive_params = []
+		for key in this_sd.keys():
+			if not(key in sd):
+				excessive_params.append(key)
+		print('Loaded chkpt key not in this model:', missing_params[:10])
+		print('This model key not in chkpt:', excessive_params[:10])
+		model.af2.load_state_dict(sd)
+
 	if args.precision == 'bf16':
 		model=model.to(dtype=torch.bfloat16)
 	
@@ -233,7 +253,7 @@ if __name__=='__main__':
 							max_steps=args.max_iter,
 							num_nodes=args.num_nodes, 
 							# strategy=CustomDDPPlugin(find_unused_parameters=False),
-							strategy=DeepSpeedPlugin(config=args.deepspeed_config_path),
+							strategy=DeepSpeedPlugin(config=args.deepspeed_config_path, load_full_weights=True),
 							accumulate_grad_batches=args.num_accum,
 							gradient_clip_val=0.1,
 							gradient_clip_algorithm = 'norm',
@@ -245,7 +265,7 @@ if __name__=='__main__':
 							# callbacks = [
 							# 	PerformanceLoggingCallback(Path('perf.json'), args.num_gpus*args.num_nodes)
 							# ],
-							# resume_from_checkpoint = Path(args.log_dir)/Path(args.model_name)/Path('version_8')/Path("checkpoints/latest")
+							resume_from_checkpoint = args.resume_chkpt
  						)
 	trainer.fit(model, data)
 	if not(args.log_dir is None):
