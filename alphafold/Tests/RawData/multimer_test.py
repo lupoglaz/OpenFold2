@@ -104,7 +104,10 @@ if __name__ == '__main__':
 	output_msa_dir.mkdir(parents=True, exist_ok=True)
 	this_feature_dict = data_multimer.process(input_fasta_path=Path(args.fasta_path), 
 											msa_output_dir=output_msa_dir)
-
+	
+	this_output_path = args.output_dir / Path('this_features_GPR139.pkl')
+	with open(this_output_path, 'wb') as f:
+		pickle.dump(this_feature_dict, f, protocol=4)
 	# af2_output_path = args.output_dir/Path('features_GPR139.pkl')
 	# with open(af2_output_path, 'rb') as f:
 	# 	af2_feature_dict = pickle.load(f)
