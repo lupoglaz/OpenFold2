@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=OpenFold2Train
 #SBATCH --partition=gpu
-#SBATCH --nodes=4
+#SBATCH --nodes=6
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=4
-#SBATCH --time 3-00:00:01
+#SBATCH --time 3-00:00:00
 #SBATCH --mem=64G
 #SBATCH --output=/home/g.derevyanko/Logs/OpenFold2/Train/OpenFold2Train_%j.log
 
@@ -24,8 +24,9 @@ srun python training.py \
 -log_dir TrainLog \
 -model_name model_small \
 -num_gpus 4 \
--num_nodes 4 \
--num_accum 4 \
+-num_nodes 6 \
+-num_accum 3 \
 -max_iter 1500000 \
--precision 16 \
--progress_bar 0
+-precision bf16 \
+-progress_bar 0 #\
+#-resume_chkpt TrainLog/model_small/version_2/checkpoints/final.ckpt

@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 from typing import Tuple, Mapping
 from alphafold.Common import residue_constants
+from alphafold.Model.linear import Linear
 
 def one_hot(x: torch.Tensor, bins: torch.Tensor):
 	#Code taken from https://github.com/aqlaboratory/openfold/blob/03bb003a9d61ed0a0db66bb996f46b1754d7d821/openfold/utils/tensor_utils.py#L60
@@ -21,11 +22,11 @@ class InputEmbeddings(nn.Module):
 		self.global_config = global_config
 
 		self.relpos_wind = config.max_relative_feature
-		self.preprocess_1d = nn.Linear(target_dim, config.msa_channel)
-		self.preprocess_msa = nn.Linear(msa_dim, config.msa_channel)
-		self.left_single = nn.Linear(target_dim, config.pair_channel)
-		self.right_single = nn.Linear(target_dim, config.pair_channel)
-		self.pair_activations = nn.Linear(2*config.max_relative_feature + 1, config.pair_channel)
+		self.preprocess_1d = Linear(target_dim, config.msa_channel)
+		self.preprocess_msa = Linear(msa_dim, config.msa_channel)
+		self.left_single = Linear(target_dim, config.pair_channel)
+		self.right_single = Linear(target_dim, config.pair_channel)
+		self.pair_activations = Linear(2*config.max_relative_feature + 1, config.pair_channel)
 	
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		modules=[self.preprocess_1d, self.preprocess_msa, self.left_single, self.right_single, self.pair_activations]
@@ -70,7 +71,7 @@ class RecycleEmbedding(nn.Module):
 
 		#Naming of the layers are:
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1730
-		self.prev_pos_linear = nn.Linear(config.prev_pos.num_bins, config.pair_channel)
+		self.prev_pos_linear = Linear(config.prev_pos.num_bins, config.pair_channel)
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1745
 		self.prev_pair_norm = nn.LayerNorm(config.pair_channel)
 		#https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1736
@@ -153,7 +154,7 @@ class ExtraMSAEmbedding(nn.Module):
 		super(ExtraMSAEmbedding, self).__init__()
 		self.config = config
 		self.global_config = global_config
-		self.extra_msa_activations = nn.Linear(msa_dim, config.extra_msa_channel)
+		self.extra_msa_activations = Linear(msa_dim, config.extra_msa_channel)
 
 	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer'):
 		w = data[f'{rel_path}/extra_msa_activations']['weights']

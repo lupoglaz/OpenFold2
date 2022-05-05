@@ -15,7 +15,7 @@
 		}
 	},
 	"fp16": {
-	  "enabled": true,
+	  "enabled": false,
 	  "loss_scale": 0,
       "loss_scale_window": 1000,
       "initial_scale_power": 16,
@@ -23,7 +23,7 @@
       "min_loss_scale": 1
 	},
 	"bfloat16": {
-		"enabled": false
+		"enabled": true
 	},
 	"amp": {
 	  "enabled": false,
@@ -34,7 +34,7 @@
 	},
 	"activation_checkpointing": {
 	  "partition_activations": false,
-	  "cpu_checkpointing": true,
+	  "cpu_checkpointing": false,
 	  "profile": false
 	},
 	"gradient_clipping": 0.1,

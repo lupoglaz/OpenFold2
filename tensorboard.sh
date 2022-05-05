@@ -17,4 +17,5 @@ echo ipnip=$ipnip
 
 #module load cuda/8.0 #TODO: Your Cuda Module if required
 
-tensorboard --logdir="${MODEL_DIR}" --port=$ipnport
+#tensorboard --logdir="${MODEL_DIR}" --port=$ipnport
+tensorboard --logdir=TrainLog --host 10.5.1.1 --port 6006

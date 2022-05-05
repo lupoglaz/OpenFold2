@@ -7,6 +7,7 @@ from alphafold.Model.Opt.msa import *
 from alphafold.Model.Opt.spatial import *
 from alphafold.Model.Opt.fastfold_msa import *
 from alphafold.Model.Opt.fastfold_spatial import *
+from alphafold.Model.linear import Linear
 
 from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
@@ -239,12 +240,10 @@ class EmbeddingsAndEvoformer(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1681
 	"""
-	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int,
-				clear_cache:bool=False) -> None:
+	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int) -> None:
 		super(EmbeddingsAndEvoformer, self).__init__()
 		self.config = config
 		self.global_config = global_config
-		self.clear_cache = clear_cache
 		
 		self.input_emb = InputEmbeddings(config, global_config, msa_dim=msa_dim, target_dim=target_dim)
 		self.recycle_emb = RecycleEmbedding(config, global_config)
@@ -261,7 +260,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=False))
-		self.single_activations = nn.Linear(config.msa_channel, config.seq_channel)
+		self.single_activations = Linear(config.msa_channel, config.seq_channel)
 	
 	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration'):
 		self.input_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
@@ -304,29 +303,33 @@ class EmbeddingsAndEvoformer(nn.Module):
 
 		extra_msa_act = self.extra_msa_emb(batch)
 		extra_pair_act = inp_pair_act
+
+		def call_iteration_ext(msa_act, pair_act, msa_mask, pair_mask, index=None):
+			return self.extra_msa_stack[index](msa_act, pair_act, msa_mask, pair_mask, True)
+
 		for i, extra_msa_iteration in enumerate(self.extra_msa_stack):
-			extra_msa_act, extra_pair_act = self.extra_msa_stack[i](extra_msa_act, extra_pair_act, batch['extra_msa_mask'], mask_2d, is_training=is_training)
-			# https://github.com/aqlaboratory/openfold/blob/e1c7c9e7cf353b068c3df7b8a23803f45dfea75d/openfold/model/evoformer.py#L380
-			# Seems like it is not necessary
-			if self.clear_cache:
-				torch.cuda.empty_cache()
+			if is_training:
+				extra_msa_act, extra_pair_act = ds_chk.checkpoint(functools.partial(call_iteration_ext, index=i), 
+																	extra_msa_act, extra_pair_act, 
+																	batch['extra_msa_mask'], mask_2d)
+			else:
+				extra_msa_act, extra_pair_act = extra_msa_iteration(extra_msa_act, extra_pair_act, 
+																	batch['extra_msa_mask'], mask_2d, 
+																	is_training=is_training)
+			
 
 		msa_act, pair_act = inp_msa_act, extra_pair_act
 		msa_mask, pair_mask = batch['msa_mask'], mask_2d
 		
-		def call_iteration(msa_act, pair_act, msa_mask, pair_mask, index=None):
+		def call_iteration_evo(msa_act, pair_act, msa_mask, pair_mask, index=None):
 			return self.evoformer_stack[index](msa_act, pair_act, msa_mask, pair_mask, True)
 
 		for i, evoformer_iteration in enumerate(self.evoformer_stack):
 			if is_training:
-				# msa_act, pair_act = checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
-				msa_act, pair_act = ds_chk.checkpoint(functools.partial(call_iteration, index=i), msa_act, pair_act, msa_mask, pair_mask)
+				msa_act, pair_act = ds_chk.checkpoint(functools.partial(call_iteration_evo, index=i), msa_act, pair_act, msa_mask, pair_mask)
 			else:
 				msa_act, pair_act = evoformer_iteration(msa_act, pair_act, msa_mask, pair_mask, is_training=is_training)
-			# Seems like it is not necessary
-			if self.clear_cache:
-				torch.cuda.empty_cache()
-
+			
 		single_act = self.single_activations(msa_act[0])
 		output = {
 			'single': single_act,
@@ -350,8 +353,7 @@ class AlphaFoldIteration(nn.Module):
 		self.evoformer_module = EmbeddingsAndEvoformer(	config.embeddings_and_evoformer, global_config, 
 														target_dim=target_dim,
 														msa_dim=msa_dim,
-														extra_msa_dim=extra_msa_dim,
-														clear_cache=False)
+														extra_msa_dim=extra_msa_dim)
 		evo_conf = config.embeddings_and_evoformer
 		head_dict = {
 			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),
