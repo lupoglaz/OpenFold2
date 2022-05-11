@@ -7,7 +7,10 @@ from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, m
 from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
 from alphafold.Model.Opt.spatial import TriangleAttentionOpt, TriangleMultiplicationOpt, OuterProductMeanOpt, TransitionOpt
 from alphafold.Model.Opt.fastfold_spatial import TriangleAttentionFF, TriangleMultiplicationFF, OuterProductMeanFF, TransitionFF
-from alphafold.Model.Opt.batch_spatial import TriangleAttentionFFB, TriangleMultiplicationFFB, OuterProductMeanFFB, TransitionFFB
+from alphafold.Model.Opt.batch_spatial import TriangleAttentionFFB, TriangleMultiplicationFFB, OuterProductMeanFFB, TransitionFFB, InvariantPointAttentionB
+
+from alphafold.Model.Heads.structure import InvariantPointAttention
+from alphafold.Model.affine import QuatAffine
 
 def TriangleAttentionTest(args, config, global_config, is_training:bool=False):
 	feat, params, res = load_data(args, 'TriangleAttention')
@@ -122,6 +125,47 @@ def TransitionTest(args, config, global_config,  is_training:bool=False):
 		assert err < 1e-5
 	
 
+def InvariantPointAttentionTest(args, config, global_config):
+	print('InvariantPointAttentionTest')
+	feat, params, res = load_data(args, 'InvariantPointAttention')
+	conf = config.model.heads.structure_module
+	
+	attn_single = InvariantPointAttention(	conf, global_config, 
+											num_feat_1d=feat['inputs_1d'].shape[-1],
+											num_feat_2d=feat['inputs_2d'].shape[-1])
+	attn_single.load_weights_from_af2(params, rel_path='invariant_point_attention')
+	attn_batch = InvariantPointAttentionB(	conf, global_config, 
+											num_feat_1d=feat['inputs_1d'].shape[-1],
+											num_feat_2d=feat['inputs_2d'].shape[-1])
+	attn_batch.load_weights_from_af2(params, rel_path='invariant_point_attention')
+	
+	
+	
+	print('inputs1d:', feat['inputs_1d'].size())
+	print('inputs2d:', feat['inputs_2d'].size())
+	print('activations:', feat['activations'].size())
+	print('mask:', feat['mask'].size())
+	batch_size = 8
+	inputs_1d_batch = feat['inputs_1d'][None, ...].repeat(batch_size, 1, 1)
+	inputs_2d_batch = feat['inputs_2d'][None, ...].repeat(batch_size, 1, 1, 1)
+	activations_batch = feat['activations'][None, ...].repeat(batch_size, 1, 1)
+	mask_batch = feat['mask'][None, ...].repeat(batch_size, 1, 1)
+	
+	qa_single = QuatAffine.from_tensor(feat['activations'].to(dtype=torch.float32))
+	qa_batch = QuatAffine.from_tensor(activations_batch.to(dtype=torch.float32))
+	
+	res_single = attn_single(inputs_1d = feat['inputs_1d'], inputs_2d = feat['inputs_2d'], mask=feat['mask'], affine=qa_single)
+	res_batch = attn_batch(inputs_1d = inputs_1d_batch, inputs_2d = inputs_2d_batch, mask=mask_batch, affine=qa_batch)
+	print(check_recursive(res_single, res))
+	print(check_recursive(res_batch[0,...], res))
+
+	for i in range(batch_size):
+		err = torch.sum(torch.abs(res_batch[i, ...] - res_single))
+		print(i, err.item())
+		assert err < 1e-2
+
+
+
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
 	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
@@ -133,5 +177,5 @@ if __name__=='__main__':
 	# TriangleAttentionTest(args, config, global_config, is_training=True)
 	# TriangleMultiplicationTest(args, config, global_config, is_training=True)
 	# OuterProductMeanTest(args, config, global_config, is_training=True)
-	TransitionTest(args, config, global_config, is_training=True)
-	
+	# TransitionTest(args, config, global_config, is_training=True)
+	InvariantPointAttentionTest(args, config, global_config)

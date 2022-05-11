@@ -124,7 +124,7 @@ class InvariantPointAttention(nn.Module):
 		
 		mask_2d = mask * (mask.transpose(-1, -2))
 		attn_logits -= 1e5 * (1.0 - mask_2d)
-
+		
 		attn = self.softmax(attn_logits)
 		result_scalar = torch.matmul(attn, v).transpose(-2, -3)
 		result_point_global = [torch.sum(attn[:,:,:,None]*vx[:,None,:,:], dim=-2).transpose(-2, -3) for vx in v_point]
@@ -152,12 +152,12 @@ class InvariantPointAttention(nn.Module):
 
 		output_features.extend(result_point_local)
 		output_features.append(dist)
-		
+				
 		result_attention_over_2d = torch.einsum('hij,ijc->ihc', attn, inputs_2d)
 		num_out = self.num_head * result_attention_over_2d.shape[-1]
 		output_features.append(result_attention_over_2d.view(num_res, num_out))
 		final_act = torch.cat(output_features, dim=-1)
-		
+			
 		return self.output_pojection(final_act)
 
 class MultiRigidSidechain(nn.Module):
