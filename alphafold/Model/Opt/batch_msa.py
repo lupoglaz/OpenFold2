@@ -119,9 +119,12 @@ class AttentionFFB(nn.Module):
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			weights = scale_mask_bias_softmax(logits, mask, nonbatched_bias, self.scaling)
+			print(logits.size(), mask.size(), nonbatched_bias.size(), weights.size())
+			print(weights)
 		else:
 			#head should be 3rd dimension
 			weights = scale_mask_softmax(logits, mask, self.scaling)
+			print(logits.size(), mask.size(), weights.size())
 
 		weighted_avg = torch.matmul(weights, v)
 		weighted_avg = rearrange(weighted_avg, 'b0 b1 h n d -> b0 b1 n (h d)')

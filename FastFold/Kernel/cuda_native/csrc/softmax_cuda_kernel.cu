@@ -820,13 +820,13 @@ at::Tensor fused_scale_mask_softmax_backward(at::Tensor d_output, at::Tensor out
 
 __global__ void fastfold_softmax_scale_mask_bias_fp32(float *input, float *mask, float *bias,
                                                       float *output, int rows, int cols,
-                                                      float scale, int head) {
+                                                      float scale, int head, int N) {
     int threadidx_x = threadIdx.x / 32;
     int threadidx_y = threadIdx.x % 32;
     int row_offset = blockIdx.x * 4 + threadidx_x;
     int cols_per_thread = (cols + 31) / 32;
     int cols_this_thread = cols_per_thread;
-
+	
     int last_y = (cols / cols_per_thread);
 
     if (threadidx_y == last_y) {
@@ -844,7 +844,9 @@ __global__ void fastfold_softmax_scale_mask_bias_fp32(float *input, float *mask,
         float *row_input = input + row_offset * cols;
         float *row_output = output + row_offset * cols;
         float *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
-        float *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+        // float *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+		float *bias_ptr = bias +  ((row_offset/(head * cols * N)) * head * cols + (row_offset % (head * cols))) * cols;
+
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -881,7 +883,7 @@ __global__ void fastfold_softmax_scale_mask_bias_fp32(float *input, float *mask,
 
 __global__ void fastfold_softmax_scale_mask_bias_bfp16(at::BFloat16 *input, at::BFloat16 *mask,
                                                        at::BFloat16 *bias, at::BFloat16 *output,
-                                                       int rows, int cols, float scale, int head) {
+                                                       int rows, int cols, float scale, int head, int N) {
     int threadidx_x = threadIdx.x / 32;
     int threadidx_y = threadIdx.x % 32;
     int row_offset = blockIdx.x * 4 + threadidx_x;
@@ -905,7 +907,8 @@ __global__ void fastfold_softmax_scale_mask_bias_bfp16(at::BFloat16 *input, at::
         at::BFloat16 *row_input = input + row_offset * cols;
         at::BFloat16 *row_output = output + row_offset * cols;
         at::BFloat16 *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
-        at::BFloat16 *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+        // at::BFloat16 *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+		at::BFloat16 *bias_ptr = bias +  ((row_offset/(head * cols * N)) * head * cols + (row_offset % (head * cols))) * cols;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -943,7 +946,7 @@ __global__ void fastfold_softmax_scale_mask_bias_bfp16(at::BFloat16 *input, at::
 
 __global__ void fastfold_softmax_scale_mask_bias_fp16(at::Half *input, at::Half *mask,
                                                        at::Half *bias, at::Half *output,
-                                                       int rows, int cols, float scale, int head) {
+                                                       int rows, int cols, float scale, int head, int N) {
     int threadidx_x = threadIdx.x / 32;
     int threadidx_y = threadIdx.x % 32;
     int row_offset = blockIdx.x * 4 + threadidx_x;
@@ -967,7 +970,8 @@ __global__ void fastfold_softmax_scale_mask_bias_fp16(at::Half *input, at::Half 
         at::Half *row_input = input + row_offset * cols;
         at::Half *row_output = output + row_offset * cols;
         at::Half *mask_ptr = mask + ((row_offset / (head * cols)) * cols);
-        at::Half *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+        // at::Half *bias_ptr = bias + ((row_offset % (head * cols)) * cols);
+		at::Half *bias_ptr = bias +  ((row_offset/(head * cols * N)) * head * cols + (row_offset % (head * cols))) * cols;
 
     #pragma unroll
         for (int i = 0; i < cols_this_thread; i++) {
@@ -1010,6 +1014,7 @@ at::Tensor fused_scale_mask_bias_softmax_forward(at::Tensor input, at::Tensor ma
     CHECK_INPUT(bias);
     const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
     int head = input.sizes()[2];
+	int N = input.sizes()[1];
     at::Tensor output = at::empty_like(input);
 
     int grid = (rows + 3) / 4;
@@ -1018,17 +1023,17 @@ at::Tensor fused_scale_mask_bias_softmax_forward(at::Tensor input, at::Tensor ma
     if (input.dtype() == torch::kFloat32) {
         fastfold_softmax_scale_mask_bias_fp32<<<grid, block>>>(
             (float *)input.data_ptr(), (float *)mask.data_ptr(), (float *)bias.data_ptr(),
-            (float *)output.data_ptr(), rows, cols, scale, head);
+            (float *)output.data_ptr(), rows, cols, scale, head, N);
     } else if(input.dtype() == torch::kHalf){
 		fastfold_softmax_scale_mask_bias_fp16<<<grid, block>>>(
             (at::Half *)input.data_ptr(), (at::Half *)mask.data_ptr(),
             (at::Half *)bias.data_ptr(), (at::Half *)output.data_ptr(), rows, cols, scale,
-            head);
+            head, N);
 	} else {
         fastfold_softmax_scale_mask_bias_bfp16<<<grid, block>>>(
             (at::BFloat16 *)input.data_ptr(), (at::BFloat16 *)mask.data_ptr(),
             (at::BFloat16 *)bias.data_ptr(), (at::BFloat16 *)output.data_ptr(), rows, cols, scale,
-            head);
+            head, N);
     }
 
     return output;
