@@ -50,6 +50,7 @@ def MSARowAttentionWithPairBiasTest(args, config, global_config, is_training = F
 		mean_geom = torch.sqrt( torch.sum(torch.abs(res_batch[i])) * torch.sum(torch.abs(res_single)) )
 		err = torch.sum(torch.abs(res_batch[i] - res_single))/torch.sum(torch.abs(res_single))
 		print(i, err.item())
+		assert err < 1e-5
 			
 
 def MSAColumnAttentionTest(args, config, global_config, is_training = False):
@@ -80,7 +81,7 @@ def MSAColumnAttentionTest(args, config, global_config, is_training = False):
 		res_single = attn_single(batch_msa_act[i], batch_msa_mask[i], is_training=is_training) +  batch_msa_act[i]
 		err = torch.sum(torch.abs(res_batch[i, ...] - res_single))/torch.sum(torch.abs(res_single))
 		print(i, err.item())
-		# assert err < 1e-5
+		assert err < 1e-5
 
 
 	

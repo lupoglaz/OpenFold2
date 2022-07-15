@@ -45,7 +45,7 @@ def TriangleAttentionTest(args, config, global_config, is_training:bool=False, l
 		res_single = attn_single(batch_pair_act[i], batch_pair_mask[i], is_training=is_training) + batch_pair_act[i]
 		err = torch.sum(torch.abs(res_batch[i] - res_single)) / torch.sum(torch.abs(res_single))
 		print(i, err.item())
-		# assert err < 1e-5
+		assert err < 1e-5
 
 
 def TriangleMultiplicationTest(args, config, global_config, is_training:bool=False, layer:str='out'):
@@ -153,6 +153,7 @@ def TransitionTest(args, config, global_config,  is_training:bool=False):
 def InvariantPointAttentionTest(args, config, global_config):
 	print('InvariantPointAttentionTest')
 	feat, params, res = load_data(args, 'InvariantPointAttention')
+	params = randomize_params(params)
 	conf = config.model.heads.structure_module
 	
 	attn_single = InvariantPointAttention(	conf, global_config, 
@@ -176,18 +177,20 @@ def InvariantPointAttentionTest(args, config, global_config):
 	activations_batch = feat['activations'][None, ...].repeat(batch_size, 1, 1)
 	mask_batch = feat['mask'][None, ...].repeat(batch_size, 1, 1)
 	
-	qa_single = QuatAffine.from_tensor(feat['activations'].to(dtype=torch.float32))
+	inputs_1d_batch.random_(-1, 1)
+	inputs_2d_batch.random_(-1, 1)
+	activations_batch.random_(-1, 1)
+	mask_batch = torch.bernoulli(torch.empty_like(mask_batch).uniform_(0, 1))
 	qa_batch = QuatAffine.from_tensor(activations_batch.to(dtype=torch.float32))
-	
-	res_single = attn_single(inputs_1d = feat['inputs_1d'], inputs_2d = feat['inputs_2d'], mask=feat['mask'], affine=qa_single)
+		
 	res_batch = attn_batch(inputs_1d = inputs_1d_batch, inputs_2d = inputs_2d_batch, mask=mask_batch, affine=qa_batch)
-	print(check_recursive(res_single, res))
-	print(check_recursive(res_batch[0,...], res))
-
+	
 	for i in range(batch_size):
-		err = torch.sum(torch.abs(res_batch[i, ...] - res_single))
+		qa_single = QuatAffine.from_tensor(activations_batch[i].to(dtype=torch.float32))
+		res_single = attn_single(inputs_1d = inputs_1d_batch[i], inputs_2d = inputs_2d_batch[i], mask=mask_batch[i], affine=qa_single)
+		err = torch.sum(torch.abs(res_batch[i, ...] - res_single)) / torch.sum(torch.abs(res_single))
 		print(i, err.item())
-		assert err < 1e-2
+		assert err < 1e-5
 
 
 
@@ -199,12 +202,12 @@ if __name__=='__main__':
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
-	# TriangleAttentionTest(args, config, global_config, is_training=True, layer='start')
-	# TriangleAttentionTest(args, config, global_config, is_training=True, layer='end')
+	TriangleAttentionTest(args, config, global_config, is_training=True, layer='start')
+	TriangleAttentionTest(args, config, global_config, is_training=True, layer='end')
 
-	# TriangleMultiplicationTest(args, config, global_config, is_training=True, layer='out')
-	# TriangleMultiplicationTest(args, config, global_config, is_training=True, layer='in')
+	TriangleMultiplicationTest(args, config, global_config, is_training=True, layer='out')
+	TriangleMultiplicationTest(args, config, global_config, is_training=True, layer='in')
 
-	# OuterProductMeanTest(args, config, global_config, is_training=True)
-	# TransitionTest(args, config, global_config, is_training=True)
-	# InvariantPointAttentionTest(args, config, global_config)
+	OuterProductMeanTest(args, config, global_config, is_training=True)
+	TransitionTest(args, config, global_config, is_training=True)
+	InvariantPointAttentionTest(args, config, global_config)

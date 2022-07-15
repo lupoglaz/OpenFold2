@@ -86,26 +86,27 @@ class EvoformerIterationFFB(nn.Module):
 		self.pair_transition.load_weights_from_af2(data, rel_path=f'{rel_path}/pair_transition', ind=ind)
 
 	def forward(self, msa_act:torch.Tensor, pair_act:torch.Tensor, msa_mask:torch.Tensor, pair_mask:torch.Tensor, 
-					is_training: bool=False) -> Mapping[str, torch.Tensor]:
+					is_training: bool=False, low_memory:bool=False) -> Mapping[str, torch.Tensor]:
 		
 		#MSA stack
-		msa_act = self.msa_row_attention_with_pair_bias(msa_act, msa_mask, pair_act=pair_act, is_training=is_training)
+		msa_act = self.msa_row_attention_with_pair_bias(msa_act, msa_mask, pair_act=pair_act, is_training=is_training, low_memory=low_memory)
 		if self.is_extra_msa:
 			#Using Opt module + original dropout and skip connection
-			msa_act = dropout_wrapper(self.msa_column_attention, msa_act, msa_mask, is_training=is_training, global_config=self.global_config)
+			msa_act = dropout_wrapper(self.msa_column_attention, msa_act, msa_mask, is_training=is_training, low_memory=low_memory, 
+										global_config=self.global_config)
 		else:
 			#Using FastFold module with dropout and skip
-			msa_act = self.msa_column_attention(msa_act, msa_mask, is_training=is_training)
+			msa_act = self.msa_column_attention(msa_act, msa_mask, is_training=is_training, low_memory=low_memory)
 		#MSA - > MSA
-		msa_act = self.msa_transition(msa_act, msa_mask, is_training=is_training)
+		msa_act = self.msa_transition(msa_act, msa_mask, is_training=is_training, low_memory=low_memory)
 		#MSA - > pair
-		pair_act = pair_act + self.outer_product_mean(msa_act, msa_mask, is_training=is_training)
+		pair_act = pair_act + self.outer_product_mean(msa_act, msa_mask, is_training=is_training, low_memory=low_memory)
 		#Pair stack
 		pair_act = self.triangle_multiplication_outgoing(pair_act, pair_mask, is_training=is_training)
 		pair_act = self.triangle_multiplication_incoming(pair_act, pair_mask, is_training=is_training)
-		pair_act = self.triangle_attention_starting_node(pair_act, pair_mask, is_training=is_training)
-		pair_act = self.triangle_attention_ending_node(pair_act, pair_mask, is_training=is_training)
+		pair_act = self.triangle_attention_starting_node(pair_act, pair_mask, is_training=is_training, low_memory=low_memory)
+		pair_act = self.triangle_attention_ending_node(pair_act, pair_mask, is_training=is_training, low_memory=low_memory)
 		
 		#Pair - > Pair
-		pair_act = self.pair_transition(pair_act, pair_mask, is_training=is_training)
+		pair_act = self.pair_transition(pair_act, pair_mask, is_training=is_training, low_memory=low_memory)
 		return msa_act, pair_act

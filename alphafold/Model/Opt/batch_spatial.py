@@ -51,7 +51,7 @@ class TriangleAttentionFFB(nn.Module):
 		fused_bias = self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
 		self.out_bias.data.copy_(fused_bias.reshape(self.out_bias.shape))
 
-	def forward(self, pair_act_raw: torch.Tensor, pair_mask: torch.Tensor, is_training:bool=False) -> torch.Tensor:
+	def forward(self, pair_act_raw: torch.Tensor, pair_mask: torch.Tensor, is_training:bool=False, low_memory:bool=False) -> torch.Tensor:
 		assert pair_act_raw.ndimension() == 4
 		assert pair_mask.ndimension() == 3
 		if self.config.orientation == 'per_column':
@@ -65,7 +65,7 @@ class TriangleAttentionFFB(nn.Module):
 		pair_act = inference_subbatch(	self.attn, self.global_config.subbatch_size, 
 							batched_args=[pair_act, pair_mask],
 							nonbatched_args=[nonbatched_bias],
-							low_memory=(not is_training))
+							low_memory=low_memory)
 		
 		if self.config.orientation == 'per_column':
 			pair_act = pair_act.transpose(-2, -3)
@@ -256,7 +256,7 @@ class OuterProductMeanFFB(nn.Module):
 		print(f'Loading output_b: {d.shape} -> {self.output_w.bias.size()}')
 		self.output_w.bias.data.copy_(torch.from_numpy(d))
 	
-	def forward(self, msa_act: torch.Tensor, msa_mask: torch.Tensor, is_training: bool=False) -> torch.Tensor:
+	def forward(self, msa_act: torch.Tensor, msa_mask: torch.Tensor, is_training: bool=False, low_memory:bool=False) -> torch.Tensor:
 		msa_mask = msa_mask[..., None]
 		msa_act = self.layer_norm_input(msa_act)
 		left_act = msa_mask * self.left_projection(msa_act)
@@ -274,7 +274,7 @@ class OuterProductMeanFFB(nn.Module):
 
 		act = inference_subbatch(compute_chunk, self.global_config.subbatch_size,
 								batched_args=[left_act, right_act], nonbatched_args=[],
-								low_memory=(not is_training), 
+								low_memory=low_memory, 
 								input_subbatch_dim=0, output_subbatch_dims=[0,1])
 				
 		eps = 1e-3
@@ -326,13 +326,13 @@ class TransitionFFB(nn.Module):
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 
-	def forward(self, act_raw: torch.Tensor, mask: torch.Tensor, is_training:bool=False) -> torch.Tensor:
+	def forward(self, act_raw: torch.Tensor, mask: torch.Tensor, is_training:bool=False, low_memory:bool=False) -> torch.Tensor:
 		mask = mask.unsqueeze(dim=-1)
 		act = self.input_layer_norm(act_raw)
 		# act = self.transition(act)
 		act = inference_subbatch(	self.transition, self.global_config.subbatch_size,
 									batched_args = [act], nonbatched_args = [],
-									low_memory = not(is_training))
+									low_memory = low_memory)
 		return act + act_raw
 
 
