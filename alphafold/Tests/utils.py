@@ -8,6 +8,14 @@ from pytorch_memlab.utils import readable_size as mem_to_str
 reporter = MemReporter()
 
 
+def randomize_params(params):
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param)
+			params[key][param] = np.random.rand(*params[key][param].shape) - 0.5
+	return params
+
 def convert(arg, device:torch.device=None):
 	if isinstance(arg, tuple):
 		return tuple([convert(arg_i) for arg_i in arg])

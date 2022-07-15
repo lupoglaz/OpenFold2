@@ -111,7 +111,6 @@ class AttentionFFB(nn.Module):
 		Returns:
 			[batch_size, num_queries, output_dim]
 		"""
-		
 		qkv = self.qkv_weights(in_data).chunk(3, dim=-1)
 		q, k, v = map(lambda t: rearrange(t, 'b0 b1 n (h d) -> b0 b1 h n d', h=self.num_head), qkv)
 		logits = torch.matmul(q, k.transpose(-1,-2))
@@ -119,22 +118,18 @@ class AttentionFFB(nn.Module):
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			weights = scale_mask_bias_softmax(logits, mask, nonbatched_bias, self.scaling)
-			print(logits.size(), mask.size(), nonbatched_bias.size(), weights.size())
-			print(weights)
 		else:
 			#head should be 3rd dimension
 			weights = scale_mask_softmax(logits, mask, self.scaling)
-			print(logits.size(), mask.size(), weights.size())
-
+		
 		weighted_avg = torch.matmul(weights, v)
 		weighted_avg = rearrange(weighted_avg, 'b0 b1 h n d -> b0 b1 n (h d)')
-
+		
 		if self.config.gating:
 			gate_values = self.gating_linear(in_data)
 			weighted_avg = bias_sigmod_ele(gate_values, self.gating_bias, weighted_avg)
 		
 		output = self.o_linear(weighted_avg)
-		
 		return output
 
 
@@ -196,7 +191,6 @@ class MSARowAttentionWithPairBiasFFB(nn.Module):
 
 		dropout_mask = torch.ones_like(msa_act, device=msa_act.device, dtype=msa_act.dtype)
 		return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=self.config.dropout_rate, training=is_training)
-		
 
 class MSAColumnAttentionFFB(MSAColumnAttention):
 	"""

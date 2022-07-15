@@ -68,7 +68,7 @@ class Attention(nn.Module):
 			logits += nonbatched_bias.unsqueeze(dim=0)
 		weights = self.softmax(logits)
 		weighted_avg = torch.einsum('bhqk,bkhc->bqhc', weights, v)
-		
+				
 		if self.config.gating:
 			gate_values = torch.einsum('bqc,chv->bqhv', q_data, self.gating_w) + self.gating_b
 			gate_values = self.sigmoid(gate_values)

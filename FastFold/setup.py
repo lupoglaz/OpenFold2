@@ -53,6 +53,8 @@ def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
     print("\nCompiling cuda extensions with")
     print(raw_output + "from " + cuda_dir + "/bin\n")
 
+    return
+
     if (bare_metal_major != torch_binary_major) or (bare_metal_minor != torch_binary_minor):
         raise RuntimeError(
             "Cuda extensions are being compiled with a version of Cuda that does " +
@@ -133,8 +135,9 @@ else:
     gpu_info = get_gpu_info()
     gen_61 = False
     for gpu in gpu_info:
-        if gpu['name'] == 'NVIDIA GeForce GTX 1080':
+        if gpu['name'] in ['NVIDIA GeForce GTX 1080', 'NVIDIA GeForce GTX 1080 Ti']:
            gen_61 = True
+    print(gpu_info)
     if gen_61:
         print('Generating code for 1080\'s')
         cc_flag = ['-gencode', 'arch=compute_61,code=sm_61']

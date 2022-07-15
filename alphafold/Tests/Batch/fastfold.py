@@ -37,6 +37,27 @@ def test_scale_mask_softmax():
 	mask = torch.bernoulli(torch.empty(batch_size, N, M).uniform_(0, 1)).cuda()
 	scaling = 0.1
 	
+	exp_weights = bias_dropout_add(logits, mask, scaling)
+
+	bias = (1e9 * (mask.to(dtype=torch.float32)-1.0))[...,None,None,:]
+	ref_weights = softmax(logits * scaling + bias)
+
+	for i in range(batch_size):
+		err = torch.sum(torch.abs(exp_weights[i] - ref_weights[i]))
+		print(i, err.item())
+
+
+def test_bias_dropout_add():
+	batch_size = 4
+	N = 16
+	M = 32
+	num_heads = 4
+	softmax = torch.nn.Softmax(dim=-1)
+
+	logits = torch.randn(batch_size, N, num_heads, M, M).cuda()
+	mask = torch.bernoulli(torch.empty(batch_size, N, M).uniform_(0, 1)).cuda()
+	scaling = 0.1
+	
 	exp_weights = scale_mask_softmax(logits, mask, scaling)
 
 	bias = (1e9 * (mask.to(dtype=torch.float32)-1.0))[...,None,None,:]

@@ -210,7 +210,7 @@ def create_extra_msa_features_test(args, config, global_config):
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
+	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/Folding/alphafold/Debug', type=str)
 		
 	args = parser.parse_args()
 	config = model_config('model_1')
@@ -219,14 +219,14 @@ if __name__=='__main__':
 	# create_extra_msa_features_test(args, config, global_config)
 	
 	# AttentionTest(args, config, global_config)
-	# MSARowAttentionWithPairBiasTest(args, config, global_config)
+	MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
 	# GlobalAttentionTest(args, config, global_config)
 	# MSAColumnGlobalAttentionTest(args, config, global_config)
 	# TriangleAttentionTest(args, config, global_config)
 	# TriangleMultiplicationIncomingTest(args, config, global_config)
 	# TriangleMultiplicationOutgoingTest(args, config, global_config)
-	OuterProductMeanTest(args, config, global_config)
+	# OuterProductMeanTest(args, config, global_config)
 	# TransitionTest(args, config, global_config)
 	# EvoformerIterationTest1(args, config, global_config)
 	# EvoformerIterationTest2(args, config, global_config)

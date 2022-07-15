@@ -197,7 +197,7 @@ def MSAColumnGlobalAttentionTest(args, config, global_config):
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/alphafold/Debug', type=str)
+	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/Folding/alphafold/Debug', type=str)
 		
 	args = parser.parse_args()
 	config = model_config('model_1')
@@ -205,7 +205,7 @@ if __name__=='__main__':
 
 	# FastFold layers test
 	# AttentionTest(args, config, global_config)
-	# MSARowAttentionWithPairBiasTest(args, config, global_config)
+	MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
 
 	# Opt layers test
