@@ -205,7 +205,7 @@ if __name__=='__main__':
 
 	# FastFold layers test
 	# AttentionTest(args, config, global_config)
-	# MSARowAttentionWithPairBiasTest(args, config, global_config)
+	MSARowAttentionWithPairBiasTest(args, config, global_config)
 	# MSAColumnAttentionTest(args, config, global_config)
 
 	# Opt layers test

@@ -120,7 +120,7 @@ class AttentionFFB(nn.Module):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
 			weights = scale_mask_bias_softmax(logits, mask, nonbatched_bias, self.scaling)
 			print(logits.size(), mask.size(), nonbatched_bias.size(), weights.size())
-			print(weights)
+			# print(weights)
 		else:
 			#head should be 3rd dimension
 			weights = scale_mask_softmax(logits, mask, self.scaling)

@@ -8,13 +8,13 @@ import math
 
 from alphafold.Model.msa import MSAColumnAttention, MSAColumnGlobalAttention
 from alphafold.Model.Opt.msa import AttentionOpt
-from .mapping import inference_subbatch
+from alphafold.Model.Opt.mapping import inference_subbatch
 from einops import rearrange
 from FastFold.Kernel import scale_mask_softmax, scale_mask_bias_softmax, bias_sigmod_ele, bias_dropout_add
 from FastFold.Kernel import LayerNorm as LayerNormFF
 
 
-class AttentionFF(nn.Module):
+class AttentionFlash(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L546
 	and
@@ -24,7 +24,7 @@ class AttentionFF(nn.Module):
 	"""
 	def __init__(self, config, global_config, output_dim:int, key_dim:int, value_dim:int,
 				last_bias_fuse:bool=False) -> None:
-		super(AttentionFF, self).__init__()
+		super(AttentionFlash, self).__init__()
 		self.config = config
 		self.global_config = global_config
 		self.output_dim = output_dim
@@ -111,39 +111,23 @@ class AttentionFF(nn.Module):
 		Returns:
 			[batch_size, num_queries, output_dim]
 		"""
-		qkv = self.qkv_weights(in_data).chunk(3, dim=-1)
-		q, k, v = map(lambda t: rearrange(t, 'b1 n (h d) -> b1 h n d', h=self.num_head), qkv)
-		# print('FF q NaN:', torch.any(torch.isnan(q)))
-		logits = torch.matmul(q, k.transpose(-1,-2))
-		# print('FF logits NaN:', torch.any(torch.isnan(logits)))
 		
+		qkv = self.qkv_weights(in_data).chunk(3, dim=-1)
+		q, k, v = map(lambda t: rearrange(t, 'b0 b1 n (h d) -> b0 b1 h n d', h=self.num_head), qkv)
+		logits = torch.matmul(q, k.transpose(-1,-2))
+				
 		if not(nonbatched_bias is None):
 			nonbatched_bias = rearrange(nonbatched_bias, 'b q k h -> b h q k')
-			print('FF logits:', logits.size())
-			print('FF mask:', mask.size())
-			print('FF nonbbias:', nonbatched_bias.size())
-			weights = scale_mask_bias_softmax(logits.unsqueeze(1), mask, nonbatched_bias, self.scaling).squeeze(1)
-			# print('FF weights:', weights.size())
-			# print('FF:',nonbatched_bias[0,0,2,:])
-			# print('FF:',weights[0,0,2,:])
-			# return weights
+			weights = scale_mask_bias_softmax(logits, mask, nonbatched_bias, self.scaling)
+			print(logits.size(), mask.size(), nonbatched_bias.size(), weights.size())
+			# print(weights)
 		else:
 			#head should be 3rd dimension
-			weights = scale_mask_softmax(logits.unsqueeze(1), mask, self.scaling).squeeze(1)
-			# weights = scale_mask_softmax(logits, mask, self.scaling)
-			# return weights
-		
-		# if torch.any(torch.isnan(weights)):
-		# 	print('FF mask==0:', torch.any(mask==0.0))
-		# 	print('FF weights NaN:', torch.any(torch.isnan(weights)))
-		# 	print(mask.size(), weights.size())
-		# 	print(torch.all(mask==0.0, dim=-1))
-		# 	print(torch.any(torch.isnan(weights), dim=-1))
-		# 	sys.exit()
-		
+			weights = scale_mask_softmax(logits, mask, self.scaling)
+			print(logits.size(), mask.size(), weights.size())
+
 		weighted_avg = torch.matmul(weights, v)
-		# print('FF weighted_avg:', weighted_avg.size())
-		weighted_avg = rearrange(weighted_avg, 'b1 h n d -> b1 n (h d)')
+		weighted_avg = rearrange(weighted_avg, 'b0 b1 h n d -> b0 b1 n (h d)')
 
 		if self.config.gating:
 			gate_values = self.gating_linear(in_data)
@@ -152,96 +136,3 @@ class AttentionFF(nn.Module):
 		output = self.o_linear(weighted_avg)
 		
 		return output
-
-class MSARowAttentionWithPairBiasFF(nn.Module):
-	"""
-	Optimized MSARowAttentionWithPairBias
-	Combines dropout, residual connection and MSARowAttentionWithPairBias
-	"""
-	def __init__(self, config, global_config, pair_dim:int, msa_dim:int) -> None:
-		super(MSARowAttentionWithPairBiasFF, self).__init__()
-		self.config = config
-		self.global_config = global_config
-		self.query_norm = LayerNormFF(msa_dim)
-		self.feat_2d_norm = LayerNormFF(pair_dim)
-		self.feat_2d_weights = Linear(pair_dim, config.num_head, use_bias=False, initializer='normal')
-		self.attn = AttentionFF(config, global_config, msa_dim, msa_dim, msa_dim, last_bias_fuse=True)
-		self.out_bias = nn.parameter.Parameter(torch.zeros(msa_dim))
-
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
-		modules=[self.query_norm, self.feat_2d_norm]
-		names=['query_norm', 'feat_2d_norm']
-		for module, name in zip(modules, names):
-			if ind is None:
-				w = data[f'{rel_path}/{name}']['scale']
-				b = data[f'{rel_path}/{name}']['offset']
-			else:
-				w = data[f'{rel_path}/{name}']['scale'][ind,...]
-				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
-			module.weight.data.copy_(torch.from_numpy(w))
-			module.bias.data.copy_(torch.from_numpy(b))
-
-		if ind is None:
-			d = data[f'{rel_path}']['feat_2d_weights']
-		else:
-			d = data[f'{rel_path}']['feat_2d_weights'][ind,...]
-		
-		print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.weight.size()}')
-		self.feat_2d_weights.weight.data.copy_(torch.from_numpy(d).transpose(-1,-2))
-		
-		fused_bias = self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
-		self.out_bias.data.copy_(fused_bias.reshape(self.out_bias.shape))
-		
-
-	def forward(self, msa_act_raw:torch.Tensor, msa_mask:torch.Tensor, pair_act:torch.Tensor, is_training:bool=False):
-		assert msa_act_raw.ndimension() == 3
-		assert msa_mask.ndimension() == 2
-		assert self.config.orientation == 'per_row'
-		
-		msa_act = self.query_norm(msa_act_raw)
-		pair_act = self.feat_2d_norm(pair_act)
-		nonbatched_bias = self.feat_2d_weights(pair_act).unsqueeze(0)
-		
-		msa_act = inference_subbatch(self.attn, self.global_config.subbatch_size, 
-									batched_args=[msa_act, msa_mask],
-									nonbatched_args=[nonbatched_bias],
-									low_memory=(not is_training))
-		#!!! Bias dropout add
-		# msa_act = msa_act.unsqueeze(dim=1)
-		# msa_act_raw = msa_act_raw.unsqueeze(dim=1)
-		dropout_mask = torch.ones_like(msa_act, device=msa_act.device, dtype=msa_act.dtype)
-		# Change prob and training
-		return bias_dropout_add(msa_act, self.out_bias, dropout_mask, msa_act_raw, prob=self.config.dropout_rate, training=is_training)#.squeeze(dim=1)
-		
-
-class MSAColumnAttentionFF(MSAColumnAttention):
-	"""
-	Optimized MSAColumnAttention
-	"""
-	def __init__(self, config, global_config, msa_dim:int) -> None:
-		super(MSAColumnAttentionFF, self).__init__(config, global_config, msa_dim)
-		self.config = config
-		self.global_config = global_config
-		self.query_norm = LayerNormFF(msa_dim)
-		self.attn = AttentionFF(config, global_config, msa_dim, msa_dim, msa_dim)
-
-	def forward(self, msa_act_raw:torch.Tensor, msa_mask:torch.Tensor, is_training:bool=False):
-		assert msa_act_raw.ndimension() == 3
-		assert msa_mask.ndimension() == 2
-		assert self.config.orientation == 'per_column'
-		
-		msa_act = msa_act_raw.transpose(-2, -3)
-		msa_mask = msa_mask.transpose(-1, -2)
-		
-		msa_act = self.query_norm(msa_act)
-		
-		msa_act = inference_subbatch(self.attn, self.global_config.subbatch_size, 
-							batched_args=[msa_act, msa_mask],
-							nonbatched_args=[None],
-							low_memory=(not is_training))
-
-		msa_act = msa_act.transpose(-2, -3)
-		return msa_act + msa_act_raw
-
