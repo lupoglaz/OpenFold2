@@ -3,7 +3,8 @@ from torch import nn
 from torch.nn import functional as F
 from typing import Tuple, Mapping
 from alphafold.Common import residue_constants
-from alphafold.Model.linear import Linear
+# from alphafold.Model.linear import Linear
+from OmniLayers.Linear.FFLinear import LinearFF as Linear
 
 def one_hot(x: torch.Tensor, bins: torch.Tensor):
 	#Code taken from https://github.com/aqlaboratory/openfold/blob/03bb003a9d61ed0a0db66bb996f46b1754d7d821/openfold/utils/tensor_utils.py#L60

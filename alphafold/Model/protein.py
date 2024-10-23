@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from alphafold.Model import affine
 from alphafold.Common import residue_constants
 from typing import Dict, Optional
-from alphafold.Model.Utils.tensor_utils import batched_gather
+from alphafold.Model.tensor_utils import batched_gather
 import numpy as np
 
 
@@ -70,7 +70,7 @@ def frames_and_literature_positions_to_atom14_pos(aatype:torch.Tensor, all_frame
 	restype_atom14_mask = torch.from_numpy(residue_constants.restype_atom14_mask).to(device=device)
 
 	residx_to_group_idx = batched_gather(restype_atom14_to_rigid_group, aatype)
-	group_mask = F.one_hot(residx_to_group_idx, 8).squeeze()
+	group_mask = F.one_hot(residx_to_group_idx.to(dtype=torch.long), 8).squeeze()
 	map_atoms_to_global = affine.rigids_apply(lambda x: torch.sum(x[:, None, :]*group_mask, dim=-1), all_frames_to_global)
 		
 	lit_positions_tensor = batched_gather(restype_atom14_rigid_group_positions, aatype)

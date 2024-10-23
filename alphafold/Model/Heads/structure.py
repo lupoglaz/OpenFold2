@@ -10,8 +10,9 @@ from collections import namedtuple
 from alphafold.Common import residue_constants
 from alphafold.Model.affine import QuatAffine, rigids_apply, vecs_apply, vecs_to_tensor, rigids_from_tensor_flat12, vecs_from_tensor
 from alphafold.Model import protein
-from alphafold.Model.Utils.tensor_utils import batched_gather
-from alphafold.Model.linear import Linear
+from alphafold.Model.tensor_utils import batched_gather
+# from alphafold.Model.linear import Linear
+from OmniLayers.Linear.FFLinear import LinearFF as Linear
 
 class InvariantPointAttention(nn.Module):
 	"""

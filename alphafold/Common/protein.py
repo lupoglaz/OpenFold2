@@ -20,7 +20,8 @@ from alphafold.Common import residue_constants
 from Bio.PDB import PDBParser
 import numpy as np
 from string import ascii_uppercase,ascii_lowercase
-import scipy
+import torch.nn.functional as F
+import torch
 
 CHAIN_IDs = ascii_uppercase+ascii_lowercase
 
@@ -234,7 +235,8 @@ def compute_plddt(logits: np.ndarray) -> np.ndarray:
   num_bins = logits.shape[-1]
   bin_width = 1.0 / num_bins
   bin_centers = np.arange(start=0.5 * bin_width, stop=1.0, step=bin_width)
-  probs = scipy.special.softmax(logits, axis=-1)
+
+  probs = F.softmax(torch.from_numpy(logits), dim=-1).numpy()
   predicted_lddt_ca = np.sum(probs * bin_centers[None, :], axis=-1)
   return predicted_lddt_ca * 100
 

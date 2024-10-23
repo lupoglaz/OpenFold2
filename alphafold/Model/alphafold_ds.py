@@ -1,10 +1,12 @@
+import sys
 import torch
 from torch import nn
 
 from OmniLayers.Attention.OrigAttention import *
 from OmniLayers.Multiplication.OrigMultiplication import *
-from OmniLayers.Evoformer.OrigEvoformer import EvoformerIterationOrig
+from OmniLayers.Evoformer.DSEvoformer import EvoformerIterationDS
 from OmniLayers.Linear.FFLinear import LinearFF as Linear
+from OmniLayers.Utils.weights_loading import parial_param_dict
 
 from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
@@ -12,12 +14,18 @@ from typing import Mapping, OrderedDict
 import functools
 from deepspeed import checkpointing as ds_chk
 
-class EmbeddingsAndEvoformer(nn.Module):
+#For original weights loading
+from alphafold.Model.alphafold import AlphaFold as AlphaFoldOrig
+import io
+import numpy as np
+from OmniLayers.Utils.weights_loading import params_to_torch
+
+class EmbeddingsAndEvoformerDS(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L1681
 	"""
 	def __init__(self, config, global_config, target_dim:int, msa_dim:int, extra_msa_dim:int) -> None:
-		super(EmbeddingsAndEvoformer, self).__init__()
+		super(EmbeddingsAndEvoformerDS, self).__init__()
 		self.config = config
 		self.global_config = global_config
 		
@@ -26,46 +34,37 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
 		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
-			self.extra_msa_stack.append(EvoformerIterationOrig(	config.evoformer, global_config, 
+			self.extra_msa_stack.append(EvoformerIterationDS(	config.evoformer, global_config, 
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
-															is_extra_msa=True))
+															is_extra_msa=True)).to(dtype=torch.bfloat16)
 		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIterationOrig(	config.evoformer, global_config, 
+			self.evoformer_stack.append(EvoformerIterationDS(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
-															is_extra_msa=False))
+															is_extra_msa=False)).to(dtype=torch.bfloat16)
 		self.single_activations = Linear(config.msa_channel, config.seq_channel)
 	
-	def load_weights_from_af2(self, data, rel_path: str='evoformer_iteration'):
-		self.input_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+	def load_weights_from_orig(self, param_dict):
+		self.input_emb.load_state_dict(parial_param_dict('input_emb', param_dict))
 		try:
-			self.recycle_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+			self.input_emb.load_state_dict(parial_param_dict('recycle_emb', param_dict))
 		except:
 			pass
-		self.extra_msa_emb.load_weights_from_af2(data, rel_path=f'{rel_path}')
+		self.extra_msa_emb.load_state_dict(parial_param_dict('extra_msa_emb', param_dict))
 		for ind, extra_msa_iter in enumerate(self.extra_msa_stack):
-			extra_msa_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/extra_msa_stack', ind=ind)
+			extra_msa_iter.load_weights_from_orig(parial_param_dict(f'extra_msa_stack.{ind}', param_dict))
 		for ind, evoformer_iter in enumerate(self.evoformer_stack):
-			evoformer_iter.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer_iteration', ind=ind)
+			evoformer_iter.load_weights_from_orig(parial_param_dict(f'evoformer_stack.{ind}', param_dict))
 
-		modules=[self.single_activations]
-		names=['single_activations']
-		for module, name in zip(modules, names):
-			w = data[f'{rel_path}/{name}']['weights']
-			b = data[f'{rel_path}/{name}']['bias']
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
-			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
-			module.bias.data.copy_(torch.from_numpy(b))
+		self.single_activations.load_state_dict(parial_param_dict('single_activations', param_dict))
 		
 	def forward(self, batch: Mapping[str, torch.Tensor], is_training:bool=False, safe_key=None):
 		# print('Embedding dtype:', self.input_emb.preprocess_1d.weight.dtype)
 		# print('Target feat dtype:', batch['target_feat'].dtype)
-
+		
 		inp_msa_act, inp_pair_act = self.input_emb(batch)
-
 		rec_msa_act, rec_pair_act = self.recycle_emb(batch)
 		if not(rec_msa_act is None):
 			inp_msa_act[0] += rec_msa_act
@@ -89,9 +88,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 																	extra_msa_act, extra_pair_act, 
 																	batch['extra_msa_mask'], mask_2d)
 			else:
-				extra_msa_act, extra_pair_act = extra_msa_iteration(extra_msa_act, extra_pair_act, 
-																	batch['extra_msa_mask'], mask_2d, 
+				extra_msa_act, extra_pair_act = extra_msa_iteration(extra_msa_act[None, ...].to(dtype=torch.bfloat16), 
+																	extra_pair_act[None, ...].to(dtype=torch.bfloat16), 
+																	batch['extra_msa_mask'][None, ...].to(dtype=torch.bfloat16), 
+																	mask_2d[None, ...].to(dtype=torch.bfloat16), 
 																	is_training=is_training)
+				extra_msa_act = extra_msa_act[0].to(dtype=torch.float32)
+				extra_pair_act = extra_pair_act[0].to(dtype=torch.float32)
 			
 
 		msa_act, pair_act = inp_msa_act, extra_pair_act
@@ -104,7 +107,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 			if is_training:
 				msa_act, pair_act = ds_chk.checkpoint(functools.partial(call_iteration_evo, index=i), msa_act, pair_act, msa_mask, pair_mask)
 			else:
-				msa_act, pair_act = evoformer_iteration(msa_act, pair_act, msa_mask, pair_mask, is_training=is_training)
+				msa_act, pair_act = evoformer_iteration(msa_act[None, ...].to(dtype=torch.bfloat16), 
+														pair_act[None, ...].to(dtype=torch.bfloat16), 
+														msa_mask[None, ...].to(dtype=torch.bfloat16), 
+														pair_mask[None, ...].to(dtype=torch.bfloat16), 
+														is_training=is_training)
+				msa_act = msa_act[0].to(dtype=torch.float32)
+				pair_act = pair_act[0].to(dtype=torch.float32)
 			
 		single_act = self.single_activations(msa_act[0])
 		output = {
@@ -115,7 +124,7 @@ class EmbeddingsAndEvoformer(nn.Module):
 		}
 		return output
 
-class AlphaFoldIteration(nn.Module):
+class AlphaFoldIterationDS(nn.Module):
 	"""
 	https://github.com/lupoglaz/alphafold/blob/2d53ad87efedcbbda8e67ab3be96af769dbeae7d/alphafold/model/modules.py#L123
 	"""
@@ -126,10 +135,10 @@ class AlphaFoldIteration(nn.Module):
 		self.config = config
 		self.global_config = global_config
 
-		self.evoformer_module = EmbeddingsAndEvoformer(	config.embeddings_and_evoformer, global_config, 
-														target_dim=target_dim,
-														msa_dim=msa_dim,
-														extra_msa_dim=extra_msa_dim)
+		self.evoformer_module = EmbeddingsAndEvoformerDS(	config.embeddings_and_evoformer, global_config, 
+															target_dim=target_dim,
+															msa_dim=msa_dim,
+															extra_msa_dim=extra_msa_dim)
 		evo_conf = config.embeddings_and_evoformer
 		head_dict = {
 			'masked_msa': (functools.partial(MaskedMSAHead, num_feat_2d=evo_conf.msa_channel), self.LOW),
@@ -151,14 +160,10 @@ class AlphaFoldIteration(nn.Module):
 			head_factory, priority = head_dict[head_name]
 			self.heads.append(head_factory(head_config, global_config))
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold_iteration', ind:int=None):
-		for (name, priority), module in zip(self.head_order, self.heads):
-			if name != 'structure_module':
-				load_name = f'{name}_head'
-			else:
-				load_name = name
-			module.load_weights_from_af2(data, rel_path=f'{rel_path}/{load_name}', ind=ind)
-		self.evoformer_module.load_weights_from_af2(data, rel_path=f'{rel_path}/evoformer')
+	def load_weights_from_orig(self, param_dict):
+		for head_num, module in enumerate(self.heads):
+			module.load_state_dict(parial_param_dict(f'heads.{head_num}', param_dict))
+		self.evoformer_module.load_weights_from_orig(parial_param_dict('evoformer_module', param_dict))
 
 	def forward(self, ensembled_batch, non_ensembled_batch, 
 				is_training:bool=False, ensemble_representations:bool=False, compute_loss:bool=False):
@@ -209,18 +214,29 @@ class AlphaFoldIteration(nn.Module):
 		return ret, total_loss
 			
 
-class AlphaFold(nn.Module):
+class AlphaFoldDS(nn.Module):
 	def __init__(self, config, target_dim:int, msa_dim:int, extra_msa_dim:int):
 		super().__init__()
 		self.config = config
 		self.global_config = config.global_config
-		self.impl = AlphaFoldIteration(	self.config, self.global_config,
+		self.impl = AlphaFoldIterationDS(	self.config, self.global_config,
 										target_dim=target_dim, 
 										msa_dim=msa_dim, 
 										extra_msa_dim=extra_msa_dim)
+		self.target_dim = target_dim
+		self.msa_dim=msa_dim
+		self.extra_msa_dim=extra_msa_dim
+
+	def load_weights_from_orig(self, param_dict):
+		self.impl.load_weights_from_orig(parial_param_dict('impl', param_dict))
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold', ind:int=None):
-		self.impl.load_weights_from_af2(data, rel_path=f'{rel_path}/alphafold_iteration')
+	def load_weights_from_af2(self, path):
+		af2orig = AlphaFoldOrig(config=self.config, target_dim=self.target_dim, msa_dim=self.msa_dim, extra_msa_dim=self.extra_msa_dim)
+		with open(path, 'rb') as f:
+			params = np.load(io.BytesIO(f.read()), allow_pickle=False)
+		params = params_to_torch(params)
+		af2orig.load_weights_from_af2(params, rel_path='alphafold')
+		self.load_weights_from_orig({name: param for name, param in af2orig.named_parameters()})
 
 	def forward(self, batch, 
 				is_training:bool=False, compute_loss:bool=True,

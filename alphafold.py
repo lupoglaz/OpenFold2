@@ -1,37 +1,29 @@
 from genericpath import exists
 import os
-import sys
-import pathlib
 from typing import Dict
 import argparse
-import random
-import time
 import subprocess
-import json
 from pathlib import Path
-import io
-import numpy as np
 import pickle
 import torch
 
 from alphafold.Model.alphafold import AlphaFold
+from alphafold.Model.alphafold_ds import AlphaFoldDS
 from alphafold.Model import model_config
 from alphafold.Model.features import AlphaFoldFeatures
-from alphafold.Model.Utils.weights_loading import params_to_torch
+from OmniLayers.Utils.weights_loading import params_to_torch
 from alphafold.Common import protein, residue_constants
 from alphafold.Data import pipeline
 
 
 
 if __name__ == '__main__':
-	parser = argparse.ArgumentParser(description='Train deep protein docking')	
+	parser = argparse.ArgumentParser(description='AlphaFold2 reproduction')
 	parser.add_argument('-fasta_path', default='T1024.fas', type=str)
-	parser.add_argument('-feature_path', default='/media/lupoglaz/OpenFold2Output/T1024/features.pkl', type=str)
-	parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
-	# parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
+	parser.add_argument('-feature_path', default='/media/lupoglaz/Data/OpenFold2Output/T1024/features.pkl', type=str)
+	parser.add_argument('-output_dir', default='/media/lupoglaz/Data/OpenFold2Output', type=str)
 	parser.add_argument('-model_name', default='model_1', type=str)
-	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
-	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	parser.add_argument('-data_dir', default='/media/lupoglaz/Data/AlphaFold2Data', type=str)
 	
 	parser.add_argument('-jackhmmer_binary_path', default='jackhmmer', type=str)
 	parser.add_argument('-hhblits_binary_path', default='hhblits', type=str)
@@ -101,6 +93,7 @@ if __name__ == '__main__':
 	model_config = config.model
 	model_config.embeddings_and_evoformer.template.enabled = False
 	model_config.resample_msa_in_recycling = False
+	config.model.global_config.sigmaRenormalization = False
 	data_config = config.data
 	data_config.eval.num_ensemble = 1
 	data_config.common.use_templates = False
@@ -111,21 +104,15 @@ if __name__ == '__main__':
 		print(key, batch[key].shape)
 		batch[key] = batch[key][0].unsqueeze(dim=0).to(device='cuda')
 	
-	af2 = AlphaFold(config=model_config, target_dim=22, msa_dim=49, extra_msa_dim=25)
-	
-	path = os.path.join(args.data_dir, 'params', f'params_{args.model_name}.npz')
-	with open(path, 'rb') as f:
-		params = np.load(io.BytesIO(f.read()), allow_pickle=False)
-	params = params_to_torch(params)
-	af2.load_weights_from_af2(params, rel_path='alphafold')
-	af2 = af2.cuda()
+	af2 = AlphaFoldDS(config=model_config, target_dim=22, msa_dim=49, extra_msa_dim=25)
+	path = Path(args.data_dir)/Path('params')/Path(f'params_{args.model_name}.npz')
+	af2.load_weights_from_af2(path)
+	af2.to(device='cuda')
 	
 	with torch.no_grad():
 		prediction_result, _ = af2(batch, is_training=False, compute_loss=False)
 		with open(output_dir / Path('result.pkl'), 'wb') as f:
 			pickle.dump(prediction_result, f, protocol=4)
-		# with open('result.pkl', 'rb') as f:
-		# 	prediction_result = pickle.load(f)
 				
 		protein_pdb = protein.from_prediction(features=batch, result=prediction_result)
 		with open(output_dir / Path('test.pdb'), 'w') as f:
