@@ -13,15 +13,24 @@ from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, O
 from alphafold.Model.alphafold import EvoformerIteration, EmbeddingsAndEvoformer
 from alphafold.Model.embedders import ExtraMSAEmbedding
 
-from alphafold.Tests.utils import load_data, check_recursive
+from Tests.utils import load_data, check_recursive
 
-def AttentionTest(args, config, global_config):
-	feat, params, res = load_data(args, 'Attention')
-	# for param in params['attention'].keys():
-	# 	print(param)
+def AttentionNoGateTest(args, config, global_config):
+	feat, params, res = load_data(args, 'Attention_no_gate')
 		
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
-	# conf.gating = False
+	conf.gating = False
+	attn = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
+	attn.load_weights_from_af2(params['attention'], None)
+	this_res = attn(q_data=feat['q_data'], m_data=feat['m_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])
+	
+	check_recursive(this_res, res)
+
+def AttentionGateTest(args, config, global_config):
+	feat, params, res = load_data(args, 'Attention_gate')
+		
+	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
+	conf.gating = True
 	attn = Attention(conf, global_config, output_dim=256, key_dim=feat['q_data'].shape[-1], value_dim=feat['m_data'].shape[-1])
 	attn.load_weights_from_af2(params['attention'], None)
 	this_res = attn(q_data=feat['q_data'], m_data=feat['m_data'], bias=feat['bias'], nonbatched_bias=feat['nonbatched_bias'])
@@ -30,10 +39,7 @@ def AttentionTest(args, config, global_config):
 
 def MSARowAttentionWithPairBiasTest(args, config, global_config):
 	feat, params, res = load_data(args, 'MSARowAttentionWithPairBias')
-	# for key in params.keys():
-	# 	print(key)
-	# 	for param in params[key].keys():
-	# 		print('\t' + param)
+	
 	conf = config.model.embeddings_and_evoformer.evoformer.msa_row_attention_with_pair_bias
 	# conf.gating = False
 	attn = MSARowAttentionWithPairBias(conf, global_config, pair_dim=feat['pair_act'].shape[-1], msa_dim=feat['msa_act'].shape[-1])
@@ -72,14 +78,21 @@ def MSAColumnGlobalAttentionTest(args, config, global_config):
 	
 	check_recursive(this_res, res)
 
-def TriangleAttentionTest(args, config, global_config):
-	feat, params, res = load_data(args, 'TriangleAttention')
+def TriangleAttentionStartingTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleAttentionStartingNode')
 	conf = config.model.embeddings_and_evoformer.evoformer.triangle_attention_starting_node
 	attn = TriangleAttention(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
-	for key in params.keys():
-		print(key)
-		for param in params[key].keys():
-			print('\t' + param)
+	
+	attn.load_weights_from_af2(params, rel_path='triangle_attention')
+	this_res = attn(feat['pair_act'], feat['pair_mask'])
+	
+	check_recursive(this_res, res)
+
+def TriangleAttentionEndingTest(args, config, global_config):
+	feat, params, res = load_data(args, 'TriangleAttentionEndingNode')
+	conf = config.model.embeddings_and_evoformer.evoformer.triangle_attention_starting_node
+	attn = TriangleAttention(conf, global_config, pair_dim=feat['pair_act'].shape[-1])
+	
 	attn.load_weights_from_af2(params, rel_path='triangle_attention')
 	this_res = attn(feat['pair_act'], feat['pair_mask'])
 	
@@ -109,10 +122,6 @@ def OuterProductMeanTest(args, config, global_config):
 	feat, params, res = load_data(args, 'OuterProductMean')
 	conf = config.model.embeddings_and_evoformer.evoformer.outer_product_mean
 	attn = OuterProductMean(conf, global_config, msa_dim=feat['msa_act'].shape[-1], num_output_channel=256)
-	for key in params.keys():
-		print(key)
-		for param in params[key].keys():
-			print('\t' + param)
 	attn.load_weights_from_af2(params, rel_path='outer_product_mean')
 	this_res = attn(feat['msa_act'], feat['msa_mask'])
 	
@@ -122,18 +131,38 @@ def TransitionTest(args, config, global_config):
 	feat, params, res = load_data(args, 'Transition')
 	conf = config.model.embeddings_and_evoformer.evoformer.pair_transition
 	attn = Transition(conf, global_config, num_channel=feat['seq_act'].shape[-1])
-	for key in params.keys():
-		print(key)
-		for param in params[key].keys():
-			print('\t' + param)
 	attn.load_weights_from_af2(params, rel_path='transition_block')
 	this_res = attn(feat['seq_act'], feat['seq_mask'])
 	
 	check_recursive(this_res, res)
 
-def EvoformerIterationTest1(args, config, global_config):
-	feat, params, res = load_data(args, 'EvoformerIteration1')
+def EvoformerIterationNoExtraMSATest(args, config, global_config):
+	feat, params, res = load_data(args, 'EvoformerIteration_NoExtraMSA')
 	conf = config.model.embeddings_and_evoformer.evoformer
+	for key in params.keys():
+		print(key)
+		for param in params[key].keys():
+			print('\t' + param + '  ' + str(params[key][param].shape))
+	for key in feat.keys():
+		print(key, feat[key].shape)
+
+	# params['evoformer_iteration/triangle_multiplication_outgoing/layer_norm_input'] =\
+	# params['evoformer_iteration/triangle_multiplication_outgoing/left_norm_input']
+
+	# params['evoformer_iteration/triangle_multiplication_outgoing/center_layer_norm'] =\
+	# params['evoformer_iteration/triangle_multiplication_outgoing/center_norm']
+
+	# params['evoformer_iteration/triangle_multiplication_outgoing/left_projection'] =\
+	# params['evoformer_iteration/triangle_multiplication_outgoing/projection']
+
+	# params['evoformer_iteration/triangle_multiplication_incoming/layer_norm_input'] =\
+	# params['evoformer_iteration/triangle_multiplication_incoming/left_norm_input']
+
+	# params['evoformer_iteration/triangle_multiplication_incoming/center_layer_norm'] =\
+	# params['evoformer_iteration/triangle_multiplication_incoming/center_norm']
+
+	# params['evoformer_iteration/triangle_multiplication_incoming/left_projection'] =\
+	# params['evoformer_iteration/triangle_multiplication_incoming/projection']
 	
 	attn = EvoformerIteration(conf, global_config, msa_dim=feat['msa_act'].shape[-1], pair_dim=feat['pair_act'].shape[-1], is_extra_msa=False)
 	attn.load_weights_from_af2(params, rel_path='evoformer_iteration')
@@ -145,8 +174,8 @@ def EvoformerIterationTest1(args, config, global_config):
 	check_recursive(this_res, res)
 	
 
-def EvoformerIterationTest2(args, config, global_config):
-	feat, params, res = load_data(args, 'EvoformerIteration2')
+def EvoformerIterationExtraMSATest(args, config, global_config):
+	feat, params, res = load_data(args, 'EvoformerIteration_ExtraMSA')
 	conf = config.model.embeddings_and_evoformer.evoformer
 	
 	attn = EvoformerIteration(	conf, global_config, 
@@ -166,13 +195,7 @@ def EvoformerIterationTest2(args, config, global_config):
 def EmbeddingsAndEvoformerTest(args, config, global_config, cuda:bool=False):
 	feat, params, res = load_data(args, 'EmbeddingsAndEvoformer')
 	conf = config.model.embeddings_and_evoformer
-	for key in params.keys():
-		print(key)
-		for param in params[key].keys():
-			print('\t' + param + '  ' + str(params[key][param].shape))
-	for key in feat.keys():
-		print(key, feat[key].shape)
-
+	
 	conf.template.enabled = False
 	conf.recycle_pos = False
 	conf.recycle_features = False
@@ -210,26 +233,41 @@ def create_extra_msa_features_test(args, config, global_config):
 
 if __name__=='__main__':
 	parser = argparse.ArgumentParser(description='Train deep protein docking')	
-	parser.add_argument('-debug_dir', default='/home/lupoglaz/Projects/Folding/alphafold/Debug', type=str)
+	parser.add_argument('-debug_dir', default='Tests/Data', type=str)
 		
 	args = parser.parse_args()
 	config = model_config('model_1')
 	global_config = config.model.global_config
 
 	# create_extra_msa_features_test(args, config, global_config)
-	
-	# AttentionTest(args, config, global_config)
+	print('AttentionGateTest:')
+	AttentionGateTest(args, config, global_config)
+	print('AttentionNoGateTest:')
+	AttentionNoGateTest(args, config, global_config)
+	print('MSARowAttentionWithPairBiasTest:')
 	MSARowAttentionWithPairBiasTest(args, config, global_config)
-	# MSAColumnAttentionTest(args, config, global_config)
-	# GlobalAttentionTest(args, config, global_config)
-	# MSAColumnGlobalAttentionTest(args, config, global_config)
-	# TriangleAttentionTest(args, config, global_config)
+	print('MSAColumnAttentionTest:')
+	MSAColumnAttentionTest(args, config, global_config)
+	print('GlobalAttentionTest:')
+	GlobalAttentionTest(args, config, global_config)
+	print('MSAColumnGlobalAttentionTest:')
+	MSAColumnGlobalAttentionTest(args, config, global_config)
+	print('TriangleAttentionStartingTest:')
+	TriangleAttentionStartingTest(args, config, global_config)
+	print('TriangleAttentionEndingTest:')
+	TriangleAttentionEndingTest(args, config, global_config)
+	# print('TriangleMultiplicationIncomingTest:')
 	# TriangleMultiplicationIncomingTest(args, config, global_config)
+	# print('TriangleMultiplicationOutgoingTest:')
 	# TriangleMultiplicationOutgoingTest(args, config, global_config)
-	# OuterProductMeanTest(args, config, global_config)
-	# TransitionTest(args, config, global_config)
-	# EvoformerIterationTest1(args, config, global_config)
-	# EvoformerIterationTest2(args, config, global_config)
+	print('OuterProductMeanTest:')
+	OuterProductMeanTest(args, config, global_config)
+	print('TransitionTest:')
+	TransitionTest(args, config, global_config) 
+	# print('EvoformerIterationNoExtraMSATest:')
+	# EvoformerIterationNoExtraMSATest(args, config, global_config)
+	# print('EvoformerIterationExtraMSATest:')
+	# EvoformerIterationExtraMSATest(args, config, global_config)
 	
 	# with torch.no_grad():
 	# 	EmbeddingsAndEvoformerTest(args, config, global_config)

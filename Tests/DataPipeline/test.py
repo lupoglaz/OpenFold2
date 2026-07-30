@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 import pickle
 import numpy as np
-from ...Data import pipeline
+from ...alphafold.Data import pipeline
 from alphafold.Model import AlphaFold, AlphaFoldFeatures, model_config
 import torch
 import numpy as np

@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 from alphafold.Model import model_config
 import numpy as np
-from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str, randomize_params
+from Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str, randomize_params
 from alphafold.Model.spatial import TriangleAttention, TriangleMultiplication, OuterProductMean, Transition
 from alphafold.Model.Opt.batch_spatial import TriangleAttentionFFB, TriangleMultiplicationFFB, OuterProductMeanFFB, TransitionFFB, InvariantPointAttentionB
 

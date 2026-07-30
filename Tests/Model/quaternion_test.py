@@ -1,9 +1,9 @@
 import torch
 from alphafold.Model.affine import QuatAffine
-from alphafold.Tests.Model.module_test import load_data
+from Tests.Model.module_test import load_data
 import argparse
 
-from alphafold.Tests.utils import check_recursive, load_data
+from Tests.utils import check_recursive, load_data
 
 def init_test(args, name):
 	args, res = load_data(args, name)

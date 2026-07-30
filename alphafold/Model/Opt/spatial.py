@@ -23,7 +23,7 @@ class TriangleAttentionOpt(nn.Module):
 		self.feat_2d_weights = Linear(pair_dim, config.num_head, use_bias=False, initializer='normal')
 		self.attn = AttentionOpt(config, global_config, pair_dim, pair_dim, pair_dim)
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.query_norm]
 		names=['query_norm']
 		for module, name in zip(modules, names):
@@ -33,8 +33,8 @@ class TriangleAttentionOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -42,7 +42,7 @@ class TriangleAttentionOpt(nn.Module):
 			d = data[f'{rel_path}']['feat_2d_weights']
 		else:
 			d = data[f'{rel_path}']['feat_2d_weights'][ind,...]
-		print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.weight.size()}')
+		if verbose: print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.weight.size()}')
 		self.feat_2d_weights.weight.data.copy_(torch.from_numpy(d).transpose(-1,-2))
 		
 		self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
@@ -94,7 +94,7 @@ class TriangleMultiplicationOpt(nn.Module):
 		self.output_projection = Linear(config.num_intermediate_channel, pair_dim, initializer='final')
 		self.gating_linear = Linear(pair_dim, pair_dim, initializer='gating')
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.layer_norm_input, self.center_layer_norm]
 		names=['layer_norm_input', 'center_layer_norm']
 		for module, name in zip(modules, names):
@@ -104,8 +104,8 @@ class TriangleMultiplicationOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -118,8 +118,8 @@ class TriangleMultiplicationOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 
@@ -173,7 +173,7 @@ class OuterProductMeanOpt(nn.Module):
 
 		self.output_w = Linear(config.num_outer_channel * config.num_outer_channel, num_output_channel, initializer='final')
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.layer_norm_input]
 		names=['layer_norm_input']
 		for module, name in zip(modules, names):
@@ -183,8 +183,8 @@ class OuterProductMeanOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -197,8 +197,8 @@ class OuterProductMeanOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -206,14 +206,14 @@ class OuterProductMeanOpt(nn.Module):
 			d = data[f'{rel_path}']['output_w']
 		else:
 			d = data[f'{rel_path}']['output_w'][ind,...]
-		print(f'Loading output_w: {d.shape} -> {self.output_w.weight.size()}')
+		if verbose: print(f'Loading output_w: {d.shape} -> {self.output_w.weight.size()}')
 		self.output_w.weight.data.copy_(torch.from_numpy(d).view(self.output_w.weight.size(1), self.output_w.weight.size(0)).transpose(0,1))
 
 		if ind is None:
 			d = data[f'{rel_path}']['output_b']
 		else:
 			d = data[f'{rel_path}']['output_b'][ind,...]
-		print(f'Loading output_b: {d.shape} -> {self.output_w.bias.size()}')
+		if verbose: print(f'Loading output_b: {d.shape} -> {self.output_w.bias.size()}')
 		self.output_w.bias.data.copy_(torch.from_numpy(d))
 	
 	def forward(self, msa_act: torch.Tensor, msa_mask: torch.Tensor, is_training: bool=False) -> torch.Tensor:
@@ -256,7 +256,7 @@ class TransitionOpt(nn.Module):
 										nn.ReLU(),
 										nn.Linear(num_intermediate, num_channel))
 		
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.input_layer_norm]
 		names=['input_layer_norm']
 		for module, name in zip(modules, names):
@@ -266,8 +266,8 @@ class TransitionOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -280,8 +280,8 @@ class TransitionOpt(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 

@@ -39,7 +39,7 @@ class Attention(nn.Module):
 			self.gating_w = nn.Parameter(torch.zeros(all_key_dim, self.num_head, self.value_dim))
 			self.gating_b = nn.Parameter(torch.ones(self.num_head, self.value_dim))
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.q_weights, self.k_weights, self.v_weights, self.o_weights, self.o_bias]
 		names=['query_w', 'key_w', 'value_w', 'output_w', 'output_b']
 		if self.config.gating:
@@ -90,7 +90,7 @@ class MSARowAttentionWithPairBias(nn.Module):
 		self.feat_2d_weights = nn.Parameter(torch.randn(pair_dim, config.num_head))
 		self.attn = Attention(config, global_config, msa_dim, msa_dim, msa_dim)
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.query_norm, self.feat_2d_norm]
 		names=['query_norm', 'feat_2d_norm']
 		for module, name in zip(modules, names):
@@ -100,15 +100,15 @@ class MSARowAttentionWithPairBias(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		if ind is None:
 			d = data[f'{rel_path}']['feat_2d_weights']
 		else:
 			d = data[f'{rel_path}']['feat_2d_weights'][ind,...]
-		print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.size()}')
+		if verbose: print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.size()}')
 		self.feat_2d_weights.data.copy_(torch.from_numpy(d))
 		
 		self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
@@ -138,7 +138,7 @@ class MSAColumnAttention(nn.Module):
 		self.query_norm = nn.LayerNorm(msa_dim)
 		self.attn = Attention(config, global_config, msa_dim, msa_dim, msa_dim)
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.query_norm]
 		names=['query_norm']
 		for module, name in zip(modules, names):
@@ -148,8 +148,8 @@ class MSAColumnAttention(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -207,7 +207,7 @@ class GlobalAttention(nn.Module):
 			self.gating_w = nn.Parameter(torch.zeros(all_key_dim, self.num_head, self.value_dim))
 			self.gating_b = nn.Parameter(torch.ones(self.num_head, self.value_dim))
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.q_weights, self.k_weights, self.v_weights, self.o_weights, self.o_bias]
 		names=['query_w', 'key_w', 'value_w', 'output_w', 'output_b']
 		if self.config.gating:
@@ -221,7 +221,7 @@ class GlobalAttention(nn.Module):
 					d = data[f'{rel_path}'][f'{name}']
 				else:
 					d = data[f'{rel_path}'][f'{name}'][ind,...]
-			print(f'Loading {name}: {d.shape} -> {module.size()}')
+			if verbose: print(f'Loading {name}: {d.shape} -> {module.size()}')
 			module.data.copy_(torch.from_numpy(d))
 
 	def mask_mean(self, mask: torch.Tensor, value: torch.Tensor, dims: Sequence[int]=None) -> torch.Tensor:
@@ -288,7 +288,7 @@ class MSAColumnGlobalAttention(nn.Module):
 		self.query_norm = nn.LayerNorm(msa_dim)
 		self.attn = GlobalAttention(config, global_config, msa_dim, msa_dim, msa_dim)
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.query_norm]
 		names=['query_norm']
 		for module, name in zip(modules, names):
@@ -298,8 +298,8 @@ class MSAColumnGlobalAttention(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		

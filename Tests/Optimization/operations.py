@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from alphafold.Model.Opt import checkpointing as chkpt
-from alphafold.Tests.utils import convert, check_recursive
+from Tests.utils import convert, check_recursive
 import argparse
 from pathlib import Path
 from typing import Dict

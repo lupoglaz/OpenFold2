@@ -13,7 +13,7 @@ from alphafold.Model.Opt.msa import AttentionOpt, GlobalAttentionOpt, MSARowAtte
 from alphafold.Model.Opt.fastfold_msa import AttentionFF, MSAColumnAttentionFF, MSARowAttentionWithPairBiasFF
 
 
-from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
+from Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
 
 from pytorch_memlab import LineProfiler
 from pytorch_memlab import MemReporter

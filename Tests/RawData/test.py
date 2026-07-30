@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 import pickle
 import numpy as np
-from ...Data import pipeline
+from ...alphafold.Data import pipeline
 
 def run(input_fasta_path: Path, msa_output_dir: Path, output_path: Path, data_pipeline: pipeline.DataPipeline):
 	msa_output_dir.mkdir(exist_ok=True)

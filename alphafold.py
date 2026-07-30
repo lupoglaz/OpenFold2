@@ -28,10 +28,9 @@ if __name__ == '__main__':
 	parser.add_argument('-fasta_path', default='T1024.fas', type=str)
 	parser.add_argument('-feature_path', default='/media/lupoglaz/OpenFold2Output/T1024/features.pkl', type=str)
 	parser.add_argument('-output_dir', default='/media/lupoglaz/OpenFold2Output', type=str)
-	# parser.add_argument('-output_dir', default='/media/HDD/AlphaFold2Output', type=str)
 	parser.add_argument('-model_name', default='model_1', type=str)
 	parser.add_argument('-data_dir', default='/media/lupoglaz/AlphaFold2Data', type=str)
-	# parser.add_argument('-data_dir', default='/media/HDD/AlphaFold2', type=str)
+	
 	
 	parser.add_argument('-jackhmmer_binary_path', default='jackhmmer', type=str)
 	parser.add_argument('-hhblits_binary_path', default='hhblits', type=str)

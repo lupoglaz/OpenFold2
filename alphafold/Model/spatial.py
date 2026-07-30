@@ -17,7 +17,7 @@ class TriangleAttention(nn.Module):
 		self.feat_2d_weights = nn.Parameter(torch.zeros(pair_dim, config.num_head))
 		self.attn = Attention(config, global_config, pair_dim, pair_dim, pair_dim)
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.query_norm]
 		names=['query_norm']
 		for module, name in zip(modules, names):
@@ -27,8 +27,8 @@ class TriangleAttention(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -36,10 +36,10 @@ class TriangleAttention(nn.Module):
 			d = data[f'{rel_path}']['feat_2d_weights']
 		else:
 			d = data[f'{rel_path}']['feat_2d_weights'][ind,...]
-		print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.size()}')
+		if verbose: print(f'Loading feat_2d_weights: {d.shape} -> {self.feat_2d_weights.size()}')
 		self.feat_2d_weights.data.copy_(torch.from_numpy(d))
 		
-		self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind)
+		self.attn.load_weights_from_af2(data, rel_path=f'{rel_path}/attention', ind=ind, verbose=verbose)
 
 	def forward(self, pair_act: torch.Tensor, pair_mask: torch.Tensor, is_training:bool=False) -> torch.Tensor:
 		assert pair_act.ndimension() == 3
@@ -79,7 +79,7 @@ class TriangleMultiplication(nn.Module):
 		self.output_projection = nn.Linear(config.num_intermediate_channel, pair_dim)
 		self.gating_linear = nn.Linear(pair_dim, pair_dim)
 
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.layer_norm_input, self.center_layer_norm]
 		names=['layer_norm_input', 'center_layer_norm']
 		for module, name in zip(modules, names):
@@ -89,8 +89,8 @@ class TriangleMultiplication(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -103,8 +103,8 @@ class TriangleMultiplication(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 
@@ -120,7 +120,7 @@ class TriangleMultiplication(nn.Module):
 		
 		left_proj_act *= left_gate_values
 		right_proj_act *= right_gate_values
-		print(self.config.equation)
+		# print(self.config.equation)
 		act = torch.einsum(self.config.equation, left_proj_act, right_proj_act)
 		act = self.center_layer_norm(act)
 		act = self.output_projection(act)
@@ -146,7 +146,7 @@ class OuterProductMean(nn.Module):
 		self.output_w = nn.Parameter(torch.zeros(config.num_outer_channel, config.num_outer_channel, num_output_channel))
 		self.output_b = nn.Parameter(torch.zeros(num_output_channel))
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.layer_norm_input]
 		names=['layer_norm_input']
 		for module, name in zip(modules, names):
@@ -156,8 +156,8 @@ class OuterProductMean(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -170,8 +170,8 @@ class OuterProductMean(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -179,14 +179,14 @@ class OuterProductMean(nn.Module):
 			d = data[f'{rel_path}']['output_w']
 		else:
 			d = data[f'{rel_path}']['output_w'][ind,...]
-		print(f'Loading output_w: {d.shape} -> {self.output_w.size()}')
+		if verbose: print(f'Loading output_w: {d.shape} -> {self.output_w.size()}')
 		self.output_w.data.copy_(torch.from_numpy(d))
 
 		if ind is None:
 			d = data[f'{rel_path}']['output_b']
 		else:
 			d = data[f'{rel_path}']['output_b'][ind,...]
-		print(f'Loading output_b: {d.shape} -> {self.output_b.size()}')
+		if verbose: print(f'Loading output_b: {d.shape} -> {self.output_b.size()}')
 		self.output_b.data.copy_(torch.from_numpy(d))
 	
 	def forward(self, msa_act: torch.Tensor, msa_mask: torch.Tensor, is_training: bool=False) -> torch.Tensor:
@@ -219,7 +219,7 @@ class Transition(nn.Module):
 		self.relu = nn.ReLU()
 		self.transition2 = nn.Linear(num_intermediate, num_channel)
 	
-	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None):
+	def load_weights_from_af2(self, data, rel_path: str='alphafold/alphafold_iteration/evoformer', ind:int=None, verbose:bool=False):
 		modules=[self.input_layer_norm]
 		names=['input_layer_norm']
 		for module, name in zip(modules, names):
@@ -229,8 +229,8 @@ class Transition(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['scale'][ind,...]
 				b = data[f'{rel_path}/{name}']['offset'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w))
 			module.bias.data.copy_(torch.from_numpy(b))
 		
@@ -243,8 +243,8 @@ class Transition(nn.Module):
 			else:
 				w = data[f'{rel_path}/{name}']['weights'][ind,...]
 				b = data[f'{rel_path}/{name}']['bias'][ind,...]
-			print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
-			print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
+			if verbose: print(f'Loading {name}.weight: {w.shape} -> {module.weight.size()}')
+			if verbose: print(f'Loading {name}.bias: {b.shape} -> {module.bias.size()}')
 			module.weight.data.copy_(torch.from_numpy(w).transpose(0, 1))
 			module.bias.data.copy_(torch.from_numpy(b))
 

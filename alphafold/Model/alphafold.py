@@ -5,15 +5,15 @@ from alphafold.Model.msa import *
 from alphafold.Model.spatial import *
 from alphafold.Model.Opt.msa import *
 from alphafold.Model.Opt.spatial import *
-from alphafold.Model.Opt.fastfold_msa import *
-from alphafold.Model.Opt.fastfold_spatial import *
+# from alphafold.Model.Opt.fastfold_msa import *
+# from alphafold.Model.Opt.fastfold_spatial import *
 from alphafold.Model.linear import Linear
 
 from alphafold.Model.embedders import *
 from alphafold.Model.Heads import *
 from typing import Mapping, OrderedDict
 import functools
-from torch.utils.checkpoint import checkpoint as torch_checkpoint
+# from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from deepspeed import checkpointing as ds_chk
 
 def dropout_wrapper(module:nn.Module, input_act:torch.Tensor, mask:torch.Tensor,  
@@ -250,13 +250,13 @@ class EmbeddingsAndEvoformer(nn.Module):
 		self.extra_msa_emb = ExtraMSAEmbedding(config, global_config, msa_dim=extra_msa_dim)
 		self.extra_msa_stack = nn.ModuleList()
 		for i in range(self.config.extra_msa_stack_num_block):
-			self.extra_msa_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
+			self.extra_msa_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
 															msa_dim=config.extra_msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=True))
 		self.evoformer_stack = nn.ModuleList()
 		for i in range(self.config.evoformer_num_block):
-			self.evoformer_stack.append(EvoformerIterationFF(	config.evoformer, global_config, 
+			self.evoformer_stack.append(EvoformerIterationOpt(	config.evoformer, global_config, 
 															msa_dim=config.msa_channel, 
 															pair_dim=config.pair_channel, 
 															is_extra_msa=False))

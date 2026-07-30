@@ -2,10 +2,10 @@ import argparse
 from pathlib import Path
 import pickle
 import numpy as np
-from ...Data import pipeline
+from ...alphafold.Data import pipeline
 
 import torch
-from alphafold.Tests.utils import convert, check_recursive, load_data
+from Tests.utils import convert, check_recursive, load_data
 from alphafold.Model.alphafold import AlphaFoldIteration, EmbeddingsAndEvoformer, AlphaFold
 from alphafold.Model import model_config
 

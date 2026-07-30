@@ -3,7 +3,7 @@ from pathlib import Path
 import pickle
 import torch
 
-from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
+from Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
 from alphafold.Model.alphafold import AlphaFold, EmbeddingsAndEvoformer, EvoformerIterationFF
 from alphafold.Model.Opt.batch_evoformer import EvoformerIterationFFB
 from alphafold.Model import model_config

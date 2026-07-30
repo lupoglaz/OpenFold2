@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 from alphafold.Model import model_config
 import numpy as np
-from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
+from Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str
 from alphafold.Model.protein import atom37_to_frames, atom37_to_torsion_angles, make_backbone_frames, frame_aligned_point_error
 from alphafold.Model import affine
 

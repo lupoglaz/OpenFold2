@@ -11,7 +11,7 @@ from collections import namedtuple
 from alphafold.Model.msa import Attention, GlobalAttention, MSARowAttentionWithPairBias, MSAColumnAttention, MSAColumnGlobalAttention
 from alphafold.Model.Opt.batch_msa import AttentionFFB, MSARowAttentionWithPairBiasFFB, MSAColumnAttentionFFB, MSAColumnGlobalAttentionOptB
 
-from alphafold.Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str, randomize_params
+from Tests.utils import check_recursive, load_data, get_total_alloc, mem_to_str, randomize_params
 
 def MSARowAttentionWithPairBiasTest(args, config, global_config, is_training = False):
 	feat, params, res = load_data(args, 'MSARowAttentionWithPairBias')

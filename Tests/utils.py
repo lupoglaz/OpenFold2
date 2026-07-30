@@ -3,10 +3,12 @@ import numpy as np
 from pathlib import Path
 import pickle
 
-from pytorch_memlab import MemReporter
-from pytorch_memlab.utils import readable_size as mem_to_str
-reporter = MemReporter()
-
+try:
+	from pytorch_memlab import MemReporter
+	from pytorch_memlab.utils import readable_size as mem_to_str
+	reporter = MemReporter()
+except:
+	pass
 
 def randomize_params(params):
 	for key in params.keys():

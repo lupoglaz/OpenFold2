@@ -16,7 +16,7 @@ from alphafold.Model.Heads.aligned_error import PredictedAlignedErrorHead
 from alphafold.Model.protein import torsion_angles_to_frames, frames_and_literature_positions_to_atom14_pos
 from alphafold.Model import affine
 from alphafold.Model.affine import QuatAffine
-from alphafold.Tests.utils import load_data, check_recursive
+from Tests.utils import load_data, check_recursive
 
 
 def InvariantPointAttentionTest(args, config, global_config):
