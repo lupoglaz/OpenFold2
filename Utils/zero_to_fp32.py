@@ -62,7 +62,7 @@ def get_optim_files(checkpoint_dir):
 
 
 def parse_model_state(file):
-    state_dict = torch.load(file, map_location=device)
+    state_dict = torch.load(file, map_location=device, weights_only=True)
 
     if BUFFER_NAMES not in state_dict:
         raise ValueError(f"{file} is not a model state checkpoint")
@@ -88,7 +88,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dicts.append(torch.load(f, map_location=device))
+        state_dicts.append(torch.load(f, map_location=device, weights_only=True))
 
     if not ZERO_STAGE in state_dicts[0][OPTIMIZER_STATE_DICT]:
         raise ValueError(f"{files[0]} is not a zero checkpoint")
